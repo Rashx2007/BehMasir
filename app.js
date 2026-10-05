@@ -877,8 +877,9 @@ function addSample() {
   const destination = document.getElementById("destination").value;
   const carId = parseInt(document.getElementById("carSelect").value);
   const unit = document.getElementById("unitInput").value.trim();
-  const timeRaw = document.getElementById("timeInput").value;
-  const dateRaw = document.getElementById("dateInput").value;
+  // مقادیر ISO/HMS که picker مستقیماً در dataset ذخیره کرده است
+  const timeRaw = timeInput.dataset.hms || timeInput.value;
+  const dateRaw = dateInput.dataset.iso || dateInput.value;
   const alertEl = document.getElementById("formAlert");
   const errorIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
   if (!origin || !destination || !timeRaw || !unit || !dateRaw) {
@@ -891,12 +892,16 @@ function addSample() {
   }
   const time = normalizeTimeInput(timeRaw);
   const dateISO = normalizeDateInput(dateRaw);
-  if (!time) { showToast("error", "ساعت معتبر نیست؛ مثال: 09:30 یا 930 یا ۹:۳۰"); return; }
-  if (!dateISO) { showToast("error", "تاریخ معتبر نیست؛ مثال: 1405/06/28 یا 050628"); return; }
-  document.getElementById("timeInput").value = toFa(time);
-  document.getElementById("dateInput").value = toFa(isoToJalaliStr(dateISO));
+
   alertEl.innerHTML = "";
-  openRouteOptionsModal({ origin, destination, time, date: dateISO, unit, preferredCarId: carId });
+  openRouteOptionsModal({
+    origin,
+    destination,
+    time,
+    date: dateISO,
+    unit,
+    preferredCarId: carId,
+  });
 }
 
 // ─── موتور پیشنهاد مسیر: چند گزینه می‌سازد، کاربر یکی را انتخاب می‌کند ───
@@ -1938,21 +1943,76 @@ function deleteVehicle(vehicleId) {
 }
 
 // ─── ابزار تاریخ جلالی (الگوریتم استاندارد jalaali-js) ───
-function div(a, b) { return ~~(a / b); }
-function mod(a, b) { return a - ~~(a / b) * b; }
+
+// ─── توست (جایگزین alert مرورگر) ───
+function showToast(type, text) {
+  let root = document.getElementById("toastRoot");
+  if (!root) {
+    root = document.createElement("div");
+    root.id = "toastRoot";
+    document.body.appendChild(root);
+  }
+  const el = document.createElement("div");
+  el.className = `toast toast-${type}`;
+  el.textContent = text;
+  root.appendChild(el);
+  setTimeout(() => el.classList.add("show"), 10);
+  setTimeout(() => {
+    el.classList.remove("show");
+    setTimeout(() => el.remove(), 300);
+  }, 4000);
+}
+
+// ─── اتصال تقویم جلالی به Picker جدید ───
+// این توابع همان الگوریتم jalaali-js هستند که قبلاً داشتیم؛
+// فقط در یک آبجکت calendar جمع شده‌اند تا به picker تزریق شوند.
+const JALALI_MONTHS = [
+  "فروردین",
+  "اردیبهشت",
+  "خرداد",
+  "تیر",
+  "مرداد",
+  "شهریور",
+  "مهر",
+  "آبان",
+  "آذر",
+  "دی",
+  "بهمن",
+  "اسفند",
+];
+const JALALI_WEEK = ["ش", "ی", "د", "س", "چ", "پ", "ج"]; // شروع هفته: شنبه
+
+function div(a, b) {
+  return ~~(a / b);
+}
+function mod(a, b) {
+  return a - ~~(a / b) * b;
+}
 function jalCal(jy) {
-  const breaks = [-61, 9, 38, 199, 426, 686, 756, 818, 1111, 1181, 1210, 1635, 2060, 2097, 2192, 2262, 2324, 2394, 2456, 3178];
-  const bl = breaks.length, gy = jy + 621;
-  let leapJ = -14, jp = breaks[0], jm, jump, leap, leapG, march, n, i;
+  const breaks = [
+    -61, 9, 38, 199, 426, 686, 756, 818, 1111, 1181, 1210, 1635, 2060, 2097,
+    2192, 2262, 2324, 2394, 2456, 3178,
+  ];
+  const bl = breaks.length,
+    gy = jy + 621;
+  let leapJ = -14,
+    jp = breaks[0],
+    jm,
+    jump,
+    leap,
+    leapG,
+    march,
+    n,
+    i;
   for (i = 1; i < bl; i += 1) {
     jm = breaks[i];
     jump = jm - jp;
     if (jy < jm) break;
-    leapJ = leapJ + div(jump, 33) * 8 + div(mod(jump, 33), 4);
+    leapJ += div(jump, 33) * 8 + div(mod(jump, 33), 4);
     jp = jm;
   }
   n = jy - jp;
-  leapJ = leapJ + div(n, 33) * 8 + div(mod(n, 33) + 3, 4);
+  leapJ += div(n, 33) * 8 + div(mod(n, 33) + 3, 4);
   if (mod(jump, 33) === 4 && jump - n === 4) leapJ += 1;
   leapG = div(gy, 4) - div((div(gy, 100) + 1) * 3, 4) - 150;
   march = 20 + leapJ - leapG;
@@ -1962,9 +2022,11 @@ function jalCal(jy) {
   return { leap, gy, march };
 }
 function g2d(gy, gm, gd) {
-  let d = div((gy + div(gm - 8, 6) - 1001001) * 1461, 4)
-    + div(153 * mod(gm + 9, 12) + 2, 5)
-    + gd - 34840408;
+  let d =
+    div((gy + div(gm - 8, 6) - 1001001) * 1461, 4) +
+    div(153 * mod(gm + 9, 12) + 2, 5) +
+    gd -
+    34840408;
   d = d - div(div(gy + 1001001 + div(gm - 8, 6), 100) * 3, 4) + 752;
   return d;
 }
@@ -1982,333 +2044,86 @@ function j2d(jy, jm, jd) {
   return g2d(r.gy, 3, r.march) + (jm - 1) * 31 - div(jm, 7) * (jm - 7) + jd - 1;
 }
 function d2j(jdn) {
-  const gy = d2g(jdn).gy, jy0 = gy - 621, r = jalCal(jy0), jdn1f = g2d(gy, 3, r.march);
-  let jy = jy0, k = jdn - jdn1f, jm, jd;
+  const gy = d2g(jdn).gy,
+    jy0 = gy - 621,
+    r = jalCal(jy0),
+    jdn1f = g2d(gy, 3, r.march);
+  let jy = jy0,
+    k = jdn - jdn1f,
+    jm,
+    jd;
   if (k >= 0) {
-    if (k <= 185) { jm = 1 + div(k, 31); jd = mod(k, 31) + 1; return { jy, jm, jd }; }
+    if (k <= 185) {
+      jm = 1 + div(k, 31);
+      jd = mod(k, 31) + 1;
+      return { jy, jm, jd };
+    }
     k -= 186;
-  } else { jy -= 1; k += 179; }
-  jm = 6 + div(k, 30); jd = mod(k, 30) + 1;
+  } else {
+    jy -= 1;
+    k += 179;
+  }
+  jm = 6 + div(k, 30);
+  jd = mod(k, 30) + 1;
   return { jy, jm, jd };
 }
-const jalMonthLen = (jy, jm) => (jm <= 6 ? 31 : jm <= 11 ? 30 : jalCal(jy).leap === 0 ? 30 : 29);
-const isoToJalali = (iso) => { const [gy, gm, gd] = iso.split("-").map(Number); return d2j(g2d(gy, gm, gd)); };
-const jalToIso = (jy, jm, jd) => { const g = d2g(j2d(jy, jm, jd)); return `${g.gy}-${String(g.gm).padStart(2, "0")}-${String(g.gd).padStart(2, "0")}`; };
-const isoToJalaliStr = (iso) => { const j = isoToJalali(iso); return `${j.jy}/${String(j.jm).padStart(2, "0")}/${String(j.jd).padStart(2, "0")}`; };
-const JAL_MONTHS = ["فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور", "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"];
-const toFa = (s) => String(s).replace(/\d/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[d]);
-const toEn = (s) => String(s).replace(/[۰-۹]/g, (d) => "۰۱۲۳۴۵۶۷۸۹".indexOf(d));
 
-// ─── توست (جایگزین alert مرورگر) ───
-function showToast(type, text) {
-  let root = document.getElementById("toastRoot");
-  if (!root) { root = document.createElement("div"); root.id = "toastRoot"; document.body.appendChild(root); }
-  const el = document.createElement("div");
-  el.className = `toast toast-${type}`;
-  el.textContent = text;
-  root.appendChild(el);
-  setTimeout(() => el.classList.add("show"), 10);
-  setTimeout(() => { el.classList.remove("show"); setTimeout(() => el.remove(), 300); }, 4000);
-}
+const jalaliCalendar = {
+  months: JALALI_MONTHS,
+  weekDays: JALALI_WEEK,
+  weekStart: 0, // شنبه = اولین ستون
+  todayISO() {
+    return todayStr();
+  },
+  toParts(iso) {
+    const [gy, gm, gd] = iso.split("-").map(Number);
+    return d2j(g2d(gy, gm, gd)); // → { jy, jm, jd }
+  },
+  fromParts(jy, jm, jd) {
+    const g = d2g(j2d(jy, jm, jd));
+    return `${g.gy}-${String(g.gm).padStart(2, "0")}-${String(g.gd).padStart(2, "0")}`;
+  },
+  monthLen(jy, jm) {
+    if (jm <= 6) return 31;
+    if (jm <= 11) return 30;
+    return jalCal(jy).leap === 0 ? 30 : 29;
+  },
+};
 
-// ─── تجزیه ورودی دستی ساعت و تاریخ ───
-function normalizeTimeInput(raw) {
-  const s = toEn(raw).replace(/\s+/g, "");
-  let h = null, m = null;
-  if (s.includes(":")) {
-    const p = s.split(":");
-    if (p.length !== 2 || !/^\d{1,2}$/.test(p[0]) || !/^\d{1,2}$/.test(p[1])) return null;
-    h = +p[0]; m = +p[1];
-  } else if (/^\d{4}$/.test(s)) { h = +s.slice(0, 2); m = +s.slice(2); }
-  else if (/^\d{3}$/.test(s)) {
-    if (+s.slice(0, 2) <= 23) { h = +s.slice(0, 2); m = +s[2]; }   // 125 → 12:05
-    else { h = +s[0]; m = +s.slice(1); }                            // 930 → 09:30
-  }
-  else if (/^\d{1,2}$/.test(s)) { h = +s; m = 0; }
-  else return null;
-  if (h > 23 || m > 59) return null;
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-}
-function normalizeDateInput(raw) {
-  const s = toEn(raw).replace(/\s+/g, "");
-  let y, m, d;
-  if (/^[\d]{1,4}[/\-.][\d]{1,2}[/\-.][\d]{1,2}$/.test(s)) {
-    [y, m, d] = s.split(/[/\-.]/).map(Number);
-  } else if (/^\d{6}$/.test(s)) { y = +s.slice(0, 2) + 1400; m = +s.slice(2, 4); d = +s.slice(4); }
-  else if (/^\d{8}$/.test(s)) { y = +s.slice(0, 4); m = +s.slice(4, 6); d = +s.slice(6); }
-  else return null;
-  if (y < 100) y += 1400;
-  if (y < 1300 || y > 1500 || m < 1 || m > 12) return null;
-  if (d < 1 || d > jalMonthLen(y, m)) return null;
-  return jalToIso(y, m, d);
-}
-function segmentAt(el) {
-  const pos = el.selectionStart == null ? el.value.length : el.selectionStart;
-  const before = toEn(el.value).slice(0, pos);
-  return (before.match(/[/:\-.]/g) || []).length;
+const persianLocale = {
+  digits: "۰۱۲۳۴۵۶۷۸۹",
+  dir: "rtl",
+};
+
+// ─── mount کردن picker ها روی input های موجود ───
+const dateInput = document.getElementById("dateInput");
+const timeInput = document.getElementById("timeInput");
+
+if (dateInput) {
+  const dp = Pickers.createDatePicker({
+    input: dateInput,
+    calendar: jalaliCalendar,
+    locale: persianLocale,
+    onPick(iso) {
+      // مقدار ISO ذخیره می‌شود؛ تابع addSample موقع ثبت آن را می‌خواند
+      dateInput.dataset.iso = iso;
+    },
+  });
+  // مقدار اولیه
+  dp.setValue(todayStr());
+  window._datePicker = dp; // برای دسترسی در addSample
 }
 
-// ─── انتخابگر تاریخ (تقویم جلالی) ───
-let dpState = null;
-let tpState = null;
-function closePickers() {
-  document.querySelectorAll(".picker-pop").forEach((p) => p.remove());
-  dpState = null;
-  tpState = null;
-  document.removeEventListener("pointerdown", outsideClose, true);
-  document.removeEventListener("keydown", escClose, true);
-}
-function outsideClose(e) {
-  if (e.target.closest(".picker-pop") || e.target.closest(".picker-btn")) return;
-  closePickers();
-}
-function escClose(e) { if (e.key === "Escape") closePickers(); }
-function positionPopover(el, anchor) {
-  const r = anchor.getBoundingClientRect();
-  el.style.visibility = "hidden";
-  requestAnimationFrame(() => {
-    const w = el.offsetWidth, hgt = el.offsetHeight;
-    let top = r.bottom + 6;
-    if (top + hgt > innerHeight - 8) top = Math.max(8, r.top - hgt - 6);
-    let right = innerWidth - r.right;
-    if (right + w > innerWidth - 8) right = 8;
-    el.style.top = top + "px";
-    el.style.right = Math.max(8, right) + "px";
-    el.style.visibility = "";
+if (timeInput) {
+  const tp = Pickers.createTimePicker({
+    input: timeInput,
+    locale: persianLocale,
+    onPick(hms) {
+      timeInput.dataset.hms = hms;
+    },
   });
-}
-function openDatePicker(anchor, iso, onPick) {
-  closePickers();
-  const j = isoToJalali(iso || todayStr());
-  dpState = { y: j.jy, m: j.jm, view: "days", iso, onPick };
-  const el = document.createElement("div");
-  el.className = "picker-pop";
-  document.body.appendChild(el);
-  dpState.el = el;
-  bindDatePicker();
-  renderDatePicker();
-  positionPopover(el, anchor);
-  document.addEventListener("pointerdown", outsideClose, true);
-  document.addEventListener("keydown", escClose, true);
-}
-function renderDatePicker() {
-  const st = dpState;
-  const todayJ = isoToJalali(todayStr());
-  const selJ = st.iso ? isoToJalali(st.iso) : null;
-  let inner = "";
-  if (st.view === "days") {
-    const g = d2g(j2d(st.y, st.m, 1));
-    const offset = (new Date(g.gy, g.gm - 1, g.gd).getDay() + 1) % 7; // شنبه = ستون اول
-    const len = jalMonthLen(st.y, st.m);
-    let cells = "";
-    for (let i = 0; i < offset; i++) cells += `<span class="dp-blank"></span>`;
-    for (let d = 1; d <= len; d++) {
-      const isSel = selJ && selJ.jy === st.y && selJ.jm === st.m && selJ.jd === d;
-      const isToday = todayJ.jy === st.y && todayJ.jm === st.m && todayJ.jd === d;
-      cells += `<button type="button" class="dp-day${isSel ? " sel" : ""}${isToday ? " today" : ""}" data-act="day" data-d="${d}">${toFa(d)}</button>`;
-    }
-    inner = `
-      <div class="dp-head">
-        <button type="button" class="dp-nav" data-act="prev" title="ماه قبل">›</button>
-        <div class="dp-title">
-          <button type="button" class="dp-title-btn" data-act="view-months">${JAL_MONTHS[st.m - 1]}</button>
-          <button type="button" class="dp-title-btn" data-act="view-years">${toFa(st.y)}</button>
-        </div>
-        <button type="button" class="dp-nav" data-act="next" title="ماه بعد">‹</button>
-      </div>
-      <div class="dp-week">${["شن", "یک", "دو", "سه", "چهار", "پنج", "جم"].map((w) => `<span>${w}</span>`).join("")}</div>
-      <div class="dp-grid">${cells}</div>`;
-  } else if (st.view === "months") {
-    inner = `
-      <div class="dp-head">
-        <button type="button" class="dp-nav" data-act="prev" title="سال قبل">›</button>
-        <div class="dp-title"><button type="button" class="dp-title-btn" data-act="view-days">${toFa(st.y)}</button></div>
-        <button type="button" class="dp-nav" data-act="next" title="سال بعد">‹</button>
-      </div>
-      <div class="dp-months">${JAL_MONTHS.map((mn, i) => `<button type="button" class="${st.m === i + 1 ? "sel" : ""}" data-act="month" data-m="${i + 1}">${mn}</button>`).join("")}</div>`;
-  } else {
-    const base = Math.floor((st.y - 1) / 12) * 12 + 1;
-    let ys = "";
-    for (let y = base; y < base + 12; y++) ys += `<button type="button" class="${y === st.y ? "sel" : ""}" data-act="year" data-y="${y}">${toFa(y)}</button>`;
-    inner = `
-      <div class="dp-head">
-        <button type="button" class="dp-nav" data-act="prev" title="۱۲ سال قبل">›</button>
-        <div class="dp-title"><button type="button" class="dp-title-btn" data-act="view-days">${toFa(base)} تا ${toFa(base + 11)}</button></div>
-        <button type="button" class="dp-nav" data-act="next" title="۱۲ سال بعد">‹</button>
-      </div>
-      <div class="dp-years">${ys}</div>`;
-  }
-  st.el.innerHTML = inner + `<div class="dp-foot"><button type="button" class="dp-today" data-act="today">امروز</button></div>`;
-}
-function bindDatePicker() {
-  dpState.el.addEventListener("click", (e) => {
-    const btn = e.target.closest("[data-act]");
-    if (!btn) return;
-    const st = dpState, act = btn.dataset.act;
-    const d = act === "next" ? 1 : -1;
-    if (act === "prev" || act === "next") {
-      if (st.view === "days") { st.m += d; if (st.m < 1) { st.m = 12; st.y--; } if (st.m > 12) { st.m = 1; st.y++; } }
-      else if (st.view === "months") st.y += d;
-      else st.y += d * 12;
-      renderDatePicker();
-    } else if (act === "view-months") { st.view = "months"; renderDatePicker(); }
-    else if (act === "view-years") { st.view = "years"; renderDatePicker(); }
-    else if (act === "view-days") { st.view = "days"; renderDatePicker(); }
-    else if (act === "month") { st.m = +btn.dataset.m; st.view = "days"; renderDatePicker(); }
-    else if (act === "year") { st.y = +btn.dataset.y; st.view = "days"; renderDatePicker(); }
-    else if (act === "day") { st.onPick(jalToIso(st.y, st.m, +btn.dataset.d)); }
-    else if (act === "today") { const j = isoToJalali(todayStr()); st.y = j.jy; st.m = j.jm; st.onPick(todayStr()); }
-  });
+  tp.setValue(8, 0);
+  window._timePicker = tp;
 }
 
-// ─── انتخابگر ساعت (صفحه دایره‌ای ۲۴ ساعته + دقیقه کشیدنی) ───
-function openTimePicker(anchor, hm, onPick) {
-  closePickers();
-  const [h, m] = hm ? hm.split(":").map(Number) : [8, 0];
-  tpState = { h, m, mode: "h", onPick, drag: false };
-  const el = document.createElement("div");
-  el.className = "picker-pop picker-pop-time";
-  document.body.appendChild(el);
-  tpState.el = el;
-  bindTimePicker();
-  renderTimePicker();
-  positionPopover(el, anchor);
-  document.addEventListener("pointerdown", outsideClose, true);
-  document.addEventListener("keydown", escClose, true);
-}
-function renderTimePicker() {
-  const { h, m, mode } = tpState;
-  const labels = [];
-  const count = mode === "h" ? 24 : 12;
-  for (let i = 0; i < count; i++) {
-    const v = mode === "h" ? i : i * 5;
-    const a = (v * (mode === "h" ? 15 : 6) * Math.PI) / 180;
-    const x = 50 + 40 * Math.sin(a), y = 50 - 40 * Math.cos(a);
-    labels.push(`<span class="tp-label" data-v="${v}" style="left:${x}%;top:${y}%">${toFa(String(v).padStart(2, "0"))}</span>`);
-  }
-  tpState.el.innerHTML = `
-    <div class="tp-digital">
-      <button type="button" class="tp-seg" data-act="mode-h">${toFa(String(h).padStart(2, "0"))}</button>
-      <span class="tp-colon">:</span>
-      <button type="button" class="tp-seg" data-act="mode-m">${toFa(String(m).padStart(2, "0"))}</button>
-    </div>
-    <div class="tp-dial">
-      ${labels.join("")}
-      <div class="tp-hand"><span class="tp-hand-dot"></span></div>
-      <span class="tp-center"></span>
-    </div>
-    <div class="tp-hint">${mode === "h" ? "ساعت را انتخاب کنید (۲۴ ساعته)" : "دقیقه: بکشید؛ بین مضرب‌های ۵ هم قابل انتخاب است"}</div>`;
-  paintTimePicker();
-}
-function paintTimePicker() {
-  const el = tpState.el, { h, m, mode } = tpState;
-  const hand = el.querySelector(".tp-hand");
-  if (hand) hand.style.transform = `rotate(${mode === "h" ? (h + m / 60) * 15 : m * 6}deg)`;
-  const segs = el.querySelectorAll(".tp-seg");
-  if (segs[0]) { segs[0].textContent = toFa(String(h).padStart(2, "0")); segs[0].classList.toggle("active", mode === "h"); }
-  if (segs[1]) { segs[1].textContent = toFa(String(m).padStart(2, "0")); segs[1].classList.toggle("active", mode === "m"); }
-  el.querySelectorAll(".tp-label").forEach((lb) => {
-    const v = +lb.dataset.v;
-    lb.classList.toggle("active", mode === "h" ? v === h : v === m);
-  });
-}
-function bindTimePicker() {
-  const el = tpState.el;
-  el.addEventListener("click", (e) => {
-    const seg = e.target.closest("[data-act]");
-    if (!seg) return;
-    tpState.mode = seg.dataset.act === "mode-h" ? "h" : "m";
-    renderTimePicker();
-  });
-  const apply = (e) => {
-    const dial = e.target.closest(".tp-dial");
-    if (!dial) return;
-    const r = dial.getBoundingClientRect();
-    const dx = e.clientX - (r.left + r.width / 2);
-    const dy = e.clientY - (r.top + r.height / 2);
-    const ang = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
-    if (tpState.mode === "h") tpState.h = Math.round(ang / 15) % 24;
-    else tpState.m = Math.round(ang / 6) % 60; // هر ۶ درجه = ۱ دقیقه → کشیدن بین اعداد هم کار می‌کند
-    paintTimePicker();
-    tpState.onPick(`${String(tpState.h).padStart(2, "0")}:${String(tpState.m).padStart(2, "0")}`);
-  };
-  el.addEventListener("pointerdown", (e) => {
-    const dial = e.target.closest(".tp-dial");
-    if (!dial) return;
-    dial.setPointerCapture(e.pointerId);
-    tpState.drag = true;
-    apply(e);
-  });
-  el.addEventListener("pointermove", (e) => { if (tpState.drag) apply(e); });
-  el.addEventListener("pointerup", () => { tpState.drag = false; });
-  el.addEventListener("pointercancel", () => { tpState.drag = false; });
-}
-
-// ─── سیم‌کشی انتخابگرها به فرم ───
-function initPickers() {
-  const dateInput = document.getElementById("dateInput");
-  const timeInput = document.getElementById("timeInput");
-  if (!dateInput || !timeInput) return;
-  dateInput.value = toFa(isoToJalaliStr(todayStr()));
-  document.getElementById("dateBtn").addEventListener("click", () => {
-    const iso = normalizeDateInput(dateInput.value) || todayStr();
-    openDatePicker(dateInput, iso, (newIso) => {
-      dateInput.value = toFa(isoToJalaliStr(newIso));
-      dateInput.classList.remove("invalid");
-      closePickers();
-    });
-  });
-  document.getElementById("timeBtn").addEventListener("click", () => {
-    openTimePicker(timeInput, normalizeTimeInput(timeInput.value), (hm) => {
-      timeInput.value = toFa(hm);
-      timeInput.classList.remove("invalid");
-    });
-  });
-  timeInput.addEventListener("blur", () => {
-    const raw = timeInput.value.trim();
-    if (!raw) return;
-    const n = normalizeTimeInput(raw);
-    if (!n) { timeInput.classList.add("invalid"); showToast("error", "ساعت معتبر نیست؛ مثال: 09:30 یا 930 یا ۹:۳۰"); }
-    else {
-      timeInput.classList.remove("invalid");
-      const disp = toFa(n);
-      if (timeInput.value.trim() !== disp) { timeInput.value = disp; showToast("success", "ساعت به قالب صحیح تبدیل شد: " + disp); }
-    }
-  });
-  dateInput.addEventListener("blur", () => {
-    const raw = dateInput.value.trim();
-    if (!raw) return;
-    const n = normalizeDateInput(raw);
-    if (!n) { dateInput.classList.add("invalid"); showToast("error", "تاریخ معتبر نیست؛ مثال: 1405/06/28 یا 050628"); }
-    else {
-      dateInput.classList.remove("invalid");
-      const disp = toFa(isoToJalaliStr(n));
-      if (dateInput.value.trim() !== disp) { dateInput.value = disp; showToast("success", "تاریخ به قالب صحیح تبدیل شد: " + disp); }
-    }
-  });
-  timeInput.addEventListener("keydown", (e) => {
-    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
-    e.preventDefault();
-    const d = e.key === "ArrowUp" ? 1 : -1;
-    const now = new Date();
-    let [h, m] = (normalizeTimeInput(timeInput.value) || `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`).split(":").map(Number);
-    if (segmentAt(timeInput) === 0) h = Math.max(0, Math.min(23, h + d));
-    else m = Math.max(0, Math.min(59, m + d));
-    timeInput.value = toFa(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
-  });
-  dateInput.addEventListener("keydown", (e) => {
-    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
-    e.preventDefault();
-    const d = e.key === "ArrowUp" ? 1 : -1;
-    let { jy, jm, jd } = isoToJalali(normalizeDateInput(dateInput.value) || todayStr());
-    const seg = segmentAt(dateInput);
-    if (seg === 0) jy = Math.max(1390, Math.min(1420, jy + d));
-    else if (seg === 1) jm = Math.max(1, Math.min(12, jm + d));
-    else jd = Math.max(1, Math.min(jalMonthLen(jy, jm), jd + d));
-    jd = Math.min(jd, jalMonthLen(jy, jm));
-    dateInput.value = toFa(`${jy}/${String(jm).padStart(2, "0")}/${String(jd).padStart(2, "0")}`);
-  });
-}
-// ─── Init ───
 render();
-initPickers();
