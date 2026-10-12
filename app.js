@@ -2753,9 +2753,17 @@ function applyRoleVisibility() {
     panel.hidden = !tabs.includes(panel.id.replace("tab-", ""));
   });
   document.querySelector(".bell-btn").hidden = !canAccess("fleet.read");
-  document.getElementById("currentUserLabel").textContent = currentUser
-    ? `${userDisplayName(currentUser)} · ${ROLE_LABELS[currentUser.role]}`
+  const userLabel = document.getElementById("currentUserLabel");
+  const name = currentUser
+    ? String(userDisplayName(currentUser) || "").trim()
+    : "";
+  const role = currentUser ? ROLE_LABELS[currentUser.role] : "";
+  userLabel.textContent = currentUser
+    ? name === role
+      ? name
+      : `${name} · ${role}`
     : "ورود به سامانه";
+  userLabel.dataset.tooltip = userLabel.textContent;
 }
 
 const bytesToHex = (buffer) =>
@@ -3240,7 +3248,7 @@ const SECTION_GUIDES = {
   ],
   centers: [
     "مراکز مبدأ و مقصد",
-    "برای ایجاد یک مرکز جدید می‌توانید بر روی نقشه یک نقطه را انتخاب کنید و نام آن را ثبت کنید.\nدر صورت عدم بارگذاری نقشه آنلاین، می‌توانید همچنان با واردکردن نام هر مرکزی آن را ثبت کنید.",
+    "برای ایجاد یک مرکز جدید می‌توانید بر روی نقشه یک نقطه را انتخاب کنید و نام آن را ثبت کنید.\nدر صورت عدم بارگذاری نقشه آنلاین، همچنان می‌توانید تنها با واردکردن یک نام، مرکز جدیدی را ثبت کنید.",
   ],
   history: [
     "سوابق سفرها",
@@ -3665,7 +3673,7 @@ function restoreModalCloseHelp() {
 function makeModalCloseHelp() {
   const help = document.createElement("aside");
   help.className = "modal-close-help full";
-  help.innerHTML = `<strong>راهنمای بستن پنجره</strong><p>برای بستن، ضربدر را بزنید، از کلید گریز (Esc) استفاده کنید یا روی فضای بیرون پنجره کلیک کنید. کشیدن ماوس از داخل به بیرون، پنجره را نمی‌بندد.</p><label class="checkbox-row"><input type="checkbox" data-dismiss-close-help>این راهنمای بستن دوباره نمایش داده نشود</label><small>بازنمایش از تنظیمات ← راهنماها امکان‌پذیر است.</small>`;
+  help.innerHTML = `<strong>راهنمای بستن پنجره</strong><p>برای بستن، ضربدر را بزنید، از کلید گریز (Esc) استفاده کنید یا روی فضای بیرون پنجره کلیک کنید.</p><label class="checkbox-row"><input type="checkbox" data-dismiss-close-help>این راهنمای بستن دوباره نمایش داده نشود</label><small>بازنمایش از تنظیمات ← راهنماها امکان‌پذیر است.</small>`;
   help
     .querySelector("input")
     .addEventListener("change", (event) =>

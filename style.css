@@ -3219,3 +3219,67 @@ input[type="checkbox"] {
   height: 44px;
   line-height: 44px;
 }
+
+/* سربرگ دسکتاپ مانند چیدمان قبلی، در یک ردیف باقی می‌ماند. */
+@media (min-width: 1101px) {
+  header {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    column-gap: 16px;
+    flex-wrap: nowrap;
+    min-height: 72px;
+  }
+  .header-brand {
+    min-width: 0;
+    white-space: nowrap;
+  }
+  .header-nav {
+    min-width: 0;
+    width: auto;
+    order: initial;
+    align-self: stretch;
+    justify-self: stretch;
+    justify-content: flex-start;
+    justify-content: safe center;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+  .header-nav .tab-btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 0 12px;
+    min-height: 72px;
+  }
+  .header-actions {
+    flex-wrap: nowrap;
+    gap: 8px;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .header-time {
+    flex-shrink: 0;
+    min-width: 96px;
+    text-align: center;
+  }
+  .header-actions .user-chip {
+    min-width: 0;
+    max-width: 220px;
+    flex: 0 1 auto;
+  }
+  #currentUserLabel {
+    min-width: 0;
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .header-actions .user-avatar,
+  .header-actions .shell-action {
+    flex-shrink: 0;
+  }
+  .header-actions .bell-btn {
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+  }
+}
