@@ -1637,64 +1637,95 @@ input.invalid {
   border: 1px solid #fcd34d;
 }
 
-/* ─── Picker کامپوننت مستقل ─── */
+/* ─── انتخابگرها؛ فرم مشابه مرجع با رنگ‌های اصلی پروژه ─── */
+.pk-input-wrap {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  direction: ltr;
+}
+.pk-input-wrap input {
+  flex: 1;
+  width: 0 !important;
+  min-width: 0;
+}
+.pk-input-trigger {
+  order: -1;
+  flex: 0 0 40px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #dbeafe;
+  color: var(--primary);
+  font-size: 1.4rem;
+  cursor: pointer;
+}
+.pk-input-trigger:hover {
+  background: #bfdbfe;
+}
+.pk-input-open {
+  border-color: var(--primary) !important;
+}
 .pk-popup {
   position: fixed;
-  z-index: 2100; /* بالاتر از مودال والد (که ۱۰۰۰ است) */
+  z-index: 2100;
+  width: 280px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
+  padding: 12px;
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 8px;
   box-shadow:
     var(--shadow),
-    0 10px 30px rgba(0, 0, 0, 0.12);
-  padding: 12px;
-  width: 280px;
-  font-family: inherit;
+    0 10px 30px rgba(15, 23, 42, 0.12);
+  font-family: "Vazirmatn", Tahoma, sans-serif;
+  color: var(--text);
 }
-.pk-popup.pk-time {
-  width: 260px;
+.pk-popup button {
+  font-family: inherit;
+  cursor: pointer;
+}
+.pk-popup button:focus-visible,
+.pk-input-trigger:focus-visible,
+.pk-dial:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 .pk-head {
   display: flex;
+  direction: ltr;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
-}
-.pk-nav {
-  border: none;
-  background: none;
-  color: var(--primary);
-  cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 6px;
-  font-size: 1rem;
-  display: flex;
-  align-items: center;
-}
-.pk-nav:hover {
-  background: var(--bg);
-}
-.pk-nav svg {
-  width: 16px;
-  height: 16px;
+  margin-bottom: 10px;
 }
 .pk-title {
   display: flex;
-  gap: 4px;
-  font-weight: 700;
-  font-size: 0.9rem;
+  direction: rtl;
+  gap: 0;
+  align-items: center;
 }
 .pk-title-btn {
+  background: none;
+  border: none;
+  color: var(--text);
+  padding: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border-radius: 5px;
+}
+.pk-nav {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--primary);
   border: none;
   background: none;
-  font-family: inherit;
-  font-weight: 700;
-  font-size: 0.85rem;
-  color: var(--text);
-  cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 6px;
+  border-radius: 5px;
+  font-size: 1.4rem;
+  line-height: 1;
 }
+.pk-nav:hover,
 .pk-title-btn:hover {
   background: var(--bg);
   color: var(--primary);
@@ -1702,40 +1733,40 @@ input.invalid {
 .pk-week,
 .pk-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 2px;
+  direction: rtl;
+}
+.pk-week {
+  margin-bottom: 4px;
 }
 .pk-week span {
-  font-size: 0.7rem;
-  color: var(--text-muted);
   text-align: center;
+  font-size: 0.65rem;
+  color: var(--primary);
   padding: 4px 0;
 }
+.pk-day,
 .pk-blank {
-  height: 32px;
+  width: 100%;
+  aspect-ratio: 1;
 }
 .pk-day {
-  border: none;
-  background: none;
-  font-family: inherit;
-  font-size: 0.8rem;
-  padding: 6px 0;
-  border-radius: 50%;
-  cursor: pointer;
-  color: var(--text);
-  aspect-ratio: 1;
   display: flex;
-  align-items: center;
   justify-content: center;
-  transition:
-    background 0.15s,
-    color 0.15s;
+  align-items: center;
+  border: 0;
+  background: none;
+  border-radius: 50%;
+  color: var(--text);
+  font-size: 0.76rem;
+  padding: 0;
 }
 .pk-day:hover {
   background: var(--bg);
 }
 .pk-day.today {
-  box-shadow: inset 0 0 0 1.5px var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
   color: var(--primary);
 }
 .pk-day.selected {
@@ -1746,30 +1777,26 @@ input.invalid {
 .pk-months,
 .pk-years {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
-  padding: 6px 0;
 }
 .pk-months button,
 .pk-years button {
-  border: none;
-  font-family: inherit;
-  font-size: 0.82rem;
-  padding: 10px 0;
-  border-radius: 8px;
+  padding: 10px 2px;
+  border: 0;
   background: var(--bg);
-  cursor: pointer;
   color: var(--text);
+  border-radius: 6px;
+  font-size: 0.78rem;
 }
 .pk-months button:hover,
 .pk-years button:hover {
-  background: #e2e8f0;
+  background: #dbeafe;
 }
 .pk-months button.selected,
 .pk-years button.selected {
   background: var(--primary);
   color: #fff;
-  font-weight: 700;
 }
 .pk-foot {
   display: flex;
@@ -1778,107 +1805,148 @@ input.invalid {
 }
 .pk-today {
   border: none;
-  font-family: inherit;
-  font-size: 0.78rem;
-  font-weight: 600;
+  border-radius: 999px;
+  padding: 3px 18px;
   background: var(--primary);
   color: #fff;
-  padding: 5px 18px;
-  border-radius: 999px;
-  cursor: pointer;
-  height: 30px;
-  transition: opacity 0.15s;
+  font-size: 0.72rem;
 }
 .pk-today:hover {
-  opacity: 0.9;
+  background: var(--primary-dark);
 }
-
-/* ─── Time Picker ─── */
-.pk-digital {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  margin-bottom: 10px;
-}
-.pk-seg {
-  border: none;
-  font-family: inherit;
-  font-weight: 700;
-  font-size: 1.1rem;
-  background: var(--bg);
-  color: var(--text);
-  border-radius: 8px;
-  padding: 4px 12px;
-  cursor: pointer;
-  transition:
-    background 0.15s,
-    color 0.15s;
-}
-.pk-seg.active {
-  background: var(--primary);
-  color: #fff;
-}
-.pk-colon {
-  font-weight: 700;
-  color: var(--text-muted);
+.pk-popup.pk-time {
+  width: 260px;
+  padding: 12px;
 }
 .pk-dial {
   position: relative;
   width: 210px;
-  height: 210px;
+  max-width: 100%;
+  aspect-ratio: 1;
   margin: 0 auto;
+  background: #f3f4f6;
   border-radius: 50%;
-  background: var(--bg);
   touch-action: none;
+  user-select: none;
   cursor: pointer;
+  direction: ltr;
+}
+.pk-labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
 }
 .pk-label {
   position: absolute;
   transform: translate(-50%, -50%);
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  transition: color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 25px;
+  height: 25px;
+  font-size: 0.65rem;
+  color: var(--text);
+  border-radius: 50%;
 }
 .pk-label.active {
-  color: var(--primary);
+  color: #fff;
   font-weight: 700;
 }
 .pk-hand {
   position: absolute;
   left: calc(50% - 1px);
-  top: calc(50% - 82px);
   width: 2px;
-  height: 82px;
   background: var(--primary);
   transform-origin: bottom center;
   border-radius: 2px;
-  transition: transform 0.25s ease;
+  pointer-events: none;
 }
 .pk-hand-dot {
   position: absolute;
-  top: -7px;
-  left: -7px;
-  width: 16px;
-  height: 16px;
+  left: 50%;
+  top: 0;
+  transform: translate(-50%, -50%);
+  width: 25px;
+  height: 25px;
   border-radius: 50%;
   background: var(--primary);
-  border: 2px solid #fff;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 .pk-center {
   position: absolute;
   left: 50%;
   top: 50%;
+  transform: translate(-50%, -50%);
   width: 8px;
   height: 8px;
-  margin: -4px;
-  border-radius: 50%;
   background: var(--primary);
+  border-radius: 50%;
+  pointer-events: none;
+}
+.pk-digital {
+  display: flex;
+  direction: ltr;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  margin-top: 8px;
+}
+.pk-seg {
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  padding: 2px 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.pk-seg.active {
+  color: var(--primary);
+}
+.pk-colon {
+  color: var(--text);
 }
 .pk-hint {
-  font-size: 0.72rem;
   color: var(--text-muted);
+  font-size: 0.65rem;
+  margin-top: 3px;
   text-align: center;
-  margin-top: 10px;
+}
+@media (max-width: 360px) {
+  .pk-popup {
+    width: 260px;
+  }
+  .pk-popup.pk-time {
+    width: 248px;
+  }
+}
+
+.pk-input-trigger svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+  margin: auto;
+}
+
+/* ورودی یکپارچه در فرم خودرو و حالت غیرفعال شیفت ۲۴ ساعته */
+.pk-input-wrap {
+  min-width: 0;
+  width: 100%;
+}
+.pk-input-wrap input {
+  text-align: right;
+}
+.pk-input-trigger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.pk-input-wrap input:disabled {
+  opacity: 0.55;
+}
+
+.recent-label {
+  direction: ltr;
+  font-size: 0.63rem;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }

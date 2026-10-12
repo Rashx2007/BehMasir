@@ -1,617 +1,798 @@
-/* ═══════════════════════════════════════════════════════════
- *  pickers.js — انتخابگر تاریخ و ساعت مستقل
- *  بدون وابستگی به کتابخانه؛ فقط DOM + توابع تبدیل تقویم
- * ═══════════════════════════════════════════════════════════ */
+/* انتخابگرهای مستقل تاریخ جلالی و ساعت؛ تبدیل تقویم از app.js تزریق می‌شود. */
+(() => {
+  "use strict";
 
-// ─── پشتهٔ پاپ‌آپ‌ها (برای Esc و کلیک‌بیرون) ───
-// هر بار که یک پاپ‌آپ باز می‌شود، به این پشته اضافه می‌شود.
-// Esc یا کلیک‌بیرون فقط بالاترین (آخرین) را می‌بندد.
-// وقتی پشته خالی شد، قفل اسکرول صفحه آزاد می‌شود.
-const POPUP_STACK = [];
-
-function pushPopup(el, closeFn) {
-  POPUP_STACK.push({ el, closeFn });
-  // قفل اسکرول صفحهٔ اصلی تا کاربر نتواند زیر پاپ‌آپ اسکرول کند
-  document.body.style.overflow = 'hidden';
-}
-
-function popPopup() {
-  const top = POPUP_STACK.pop();
-  if (!top) return;
-  if (top.closeFn) top.closeFn();
-  if (top.el && top.el.parentNode) top.el.remove();
-  if (POPUP_STACK.length === 0) {
-    document.body.style.overflow = '';
-  }
-}
-
-// Esc — فقط بالاترین پاپ‌آپ را می‌بندد (و رویداد به مودال والد نمی‌رسد)
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && POPUP_STACK.length > 0) {
-    e.stopPropagation(); // جلوی رسیدن به مودال والد را می‌گیرد
-    e.preventDefault();
-    popPopup();
-  }
-});
-
-// کلیک‌بیرون — بالاترین پاپ‌آپی که کلیک خارج آن بوده بسته شود
-document.addEventListener('mousedown', (e) => {
-  for (let i = POPUP_STACK.length - 1; i >= 0; i--) {
-    const { el } = POPUP_STACK[i];
-    if (el && !el.contains(e.target)) {
-      // این پاپ‌آپ باید بسته شود؛ اما اگر زیرش پاپ‌آپ دیگری هست،
-      // فقط همین را می‌بندیم (نه همه را)
-      POPUP_STACK.splice(i, 1)[0].closeFn && POPUP_STACK.splice(i, 1)[0].closeFn();
-      // ساده‌تر: فقط آخرین را می‌بندیم
-      popPopup();
-      break;
-    }
-  }
-});
-
-// ─── ابزارهای عمومی ───
-// جایگزینی ارقام لاتین ↔ بومی بر اساس نگاشت محلی
-function localizeDigits(s, locale) {
-  const from = '0123456789';
-  const to = locale.digits || '0123456789';
-  const map = {};
-  for (let i = 0; i < 10; i++) {
-    map[from[i]] = to[i];
-    map[to[i]] = from[i]; // دوطرفه: هم ورودی، هم خروجی
-  }
-  return String(s).replace(/[0-9]|./g, (ch) => map[ch] || ch);
-}
-const toLatin = (s, locale) => localizeDigits(s, locale);
-const toNative = (s, locale) => localizeDigits(s, locale);
-
-// تبدیل ارقام ورودی کاربر به لاتین برای پردازش،
-// و هر نویسهٔ نامعتبر را حذف می‌کند
-function normalizeDigits(s, locale) {
-  return toLatin(s, locale).replace(/[^\d:/\-\.]/g, '');
-}
-
-// ─── پوزیشن‌یابی هوشمند پاپ‌آپ ───
-// پاپ‌آپ را زیر لنگر قرار می‌دهد؛ اگر جا نبود، بالا می‌برد
-function positionPopup(popup, anchor) {
-  popup.style.visibility = 'hidden';
-  popup.style.display = 'block';
-  requestAnimationFrame(() => {
-    const r = anchor.getBoundingClientRect();
-    const w = popup.offsetWidth;
-    const h = popup.offsetHeight;
-    const viewportW = window.innerWidth;
-    const viewportH = window.innerHeight;
-
-    // راست‌چین یا چپ‌چین بر اساس جهت لنگر
-    const isRTL = getComputedStyle(anchor).direction === 'rtl';
-
-    // موقعیت عمودی: ترجیحاً زیر لنگر؛ اگر جا نبود، بالای لنگر
-    let top = r.bottom + 6;
-    if (top + h > viewportH - 8) {
-      top = Math.max(8, r.top - h - 6);
-    }
-
-    // موقعیت افقی: تراز با لبهٔ شروع لنگر (RTL = راست)
-    let left;
-    if (isRTL) {
-      left = Math.max(8, r.right - w);
-    } else {
-      left = Math.min(r.left, viewportW - w - 8);
-    }
-
-    popup.style.top = top + 'px';
-    popup.style.left = left + 'px';
-    popup.style.visibility = '';
-  });
-}
-
-/* ═══════════════════════════════════════════════
- *  DATE PICKER — انتخابگر تاریخ
- * ═══════════════════════════════════════════════ */
-/**
- * @param {Object} opts
- * @param {HTMLInputElement} opts.input      — فیلد متنی متصل
- * @param {Object} opts.calendar             — توابع تبدیل تقویم:
- *     { toParts(iso), fromParts(y,m,d), monthLen(y,m), months[], weekDays[], weekStart, todayISO() }
- *     iso = "YYYY-MM-DD" (میلادی) برای ذخیره/انتقال
- * @param {Object} opts.locale               — { digits: "۰۱۲۳۴۵۶۷۸۹", dir: "rtl" }
- * @param {Function} opts.onPick(iso)        — پس از انتخاب نهایی صدا زده می‌شود
- */
-function createDatePicker({ input, calendar, locale, onPick }) {
-  const state = {
-    view: { y: 0, m: 0 },     // سال و ماه در حال نمایش
-    selected: null,            // { y, m, d } انتخاب نهایی
-    viewMode: 'days',          // 'days' | 'months' | 'years'
-    yearsBase: 0,              // پایهٔ دهه/دوازده‌سال برای view years
-    popup: null,
-  };
-
-  // ─── قالب‌بندی ───
-  // iso → "YYYY/MM/DD" با ارقام بومی (برای نمایش در input)
-  function formatForInput(iso) {
-    if (!iso) return '';
-    const p = calendar.toParts(iso);
-    const y = String(p.jy).padStart(4, '0');
-    const m = String(p.jm).padStart(2, '0');
-    const d = String(p.jd).padStart(2, '0');
-    return toNative(`${y}/${m}/${d}`, locale);
-  }
-  // مقدار input را می‌خواند و در صورت اعتبار به iso برمی‌گرداند
-  function parseInput() {
-    const raw = normalizeDigits(input.value, locale);
-    if (!raw) return null;
-    let y, m, d;
-    // قالب‌های قابل‌قبول: YYYY/MM/DD یا YYMMDD یا YYYYMMDD
-    if (/^\d{4}[/\-.]\d{1,2}[/\-.]\d{1,2}$/.test(raw)) {
-      [y, m, d] = raw.split(/[/\-.]/).map(Number);
-    } else if (/^\d{6}$/.test(raw)) {
-      y = +raw.slice(0, 2) + 1400; m = +raw.slice(2, 4); d = +raw.slice(4);
-    } else if (/^\d{8}$/.test(raw)) {
-      y = +raw.slice(0, 4); m = +raw.slice(4, 6); d = +raw.slice(6);
-    } else {
-      return null;
-    }
-    if (y < 100) y += 1400;
-    if (y < 1300 || y > 1500 || m < 1 || m > 12) return null;
-    const ml = calendar.monthLen(y, m);
-    if (d < 1 || d > ml) return null;
-    return calendar.fromParts(y, m, d);
-  }
-
-  // ─── رندر پاپ‌آپ ───
-  function renderDays(container) {
-    const { y, m } = state.view;
-    const today = calendar.toParts(calendar.todayISO());
-    const sel = state.selected;
-
-    // سربرگ: فلش قبلی | ماه سال | فلش بعدی (mirror-aware با CSS)
-    const head = document.createElement('div');
-    head.className = 'pk-head';
-    head.innerHTML = `
-      <button type="button" class="pk-nav" data-act="prev" aria-label="قبلی">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
-      </button>
-      <div class="pk-title">
-        <button type="button" class="pk-title-btn" data-act="view-months">${calendar.months[m - 1]}</button>
-        <button type="button" class="pk-title-btn" data-act="view-years">${toNative(String(y), locale)}</button>
-      </div>
-      <button type="button" class="pk-nav" data-act="next" aria-label="بعدی">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
-      </button>
-    `;
-    container.appendChild(head);
-
-    // ردیف روزهای هفته (با weekStart قابل پیکربندی)
-    const week = document.createElement('div');
-    week.className = 'pk-week';
-    const days = calendar.weekDays;
-    const start = calendar.weekStart || 0;
-    for (let i = 0; i < 7; i++) {
-      const sp = document.createElement('span');
-      sp.textContent = days[(i + start) % 7];
-      week.appendChild(sp);
-    }
-    container.appendChild(week);
-
-    // شبکهٔ روزها
-    const grid = document.createElement('div');
-    grid.className = 'pk-grid';
-    const firstIso = calendar.fromParts(y, m, 1);
-    const firstParts = calendar.toParts(firstIso);
-    // محاسبهٔ offset: چند خانه خالی قبل از روز ۱
-    // getDay میلادی را به offset در شبکه تبدیل می‌کنیم
-    const firstDate = new Date(...firstIso.split('-').map((n, i) => i === 1 ? +n - 1 : +n));
-    const dow = firstDate.getDay(); // 0=Sun .. 6=Sat
-    const offset = (dow - start + 7) % 7;
-    for (let i = 0; i < offset; i++) {
-      const blank = document.createElement('span');
-      blank.className = 'pk-blank';
-      grid.appendChild(blank);
-    }
-    const len = calendar.monthLen(y, m);
-    for (let d = 1; d <= len; d++) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'pk-day';
-      btn.textContent = toNative(String(d), locale);
-      btn.dataset.d = d;
-      if (today.jy === y && today.jm === m && today.jd === d) btn.classList.add('today');
-      if (sel && sel.y === y && sel.m === m && sel.d === d) btn.classList.add('selected');
-      grid.appendChild(btn);
-    }
-    container.appendChild(grid);
-
-    // دکمهٔ امروز (pill، کوچک، پایین وسط)
-    const foot = document.createElement('div');
-    foot.className = 'pk-foot';
-    const todayBtn = document.createElement('button');
-    todayBtn.type = 'button';
-    todayBtn.className = 'pk-today';
-    todayBtn.textContent = 'امروز';
-    todayBtn.dataset.act = 'today';
-    foot.appendChild(todayBtn);
-    container.appendChild(foot);
-  }
-
-  function renderMonths(container) {
-    const { y } = state.view;
-    const head = document.createElement('div');
-    head.className = 'pk-head';
-    head.innerHTML = `
-      <button type="button" class="pk-nav" data-act="prev">‹</button>
-      <div class="pk-title">
-        <button type="button" class="pk-title-btn" data-act="view-days">${toNative(String(y), locale)}</button>
-      </div>
-      <button type="button" class="pk-nav" data-act="next">›</button>
-    `;
-    container.appendChild(head);
-    const grid = document.createElement('div');
-    grid.className = 'pk-months';
-    calendar.months.forEach((name, i) => {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.textContent = name;
-      b.dataset.m = i + 1;
-      if (state.selected && state.selected.y === y && state.selected.m === i + 1) b.classList.add('selected');
-      grid.appendChild(b);
+  // پشته برای ترتیب لایه‌ها، بستن انتخابگر بالایی و بازیابی قفل اسکرول حفظ شده است.
+  const POPUP_STACK = [];
+  let savedOverflow = "";
+  const nativeDigits = "۰۱۲۳۴۵۶۷۸۹";
+  const arabicDigits = "٠١٢٣٤٥٦٧٨٩";
+  const toLatin = (value, locale) =>
+    String(value).replace(/[۰-۹٠-٩]/g, (ch) => {
+      const index = nativeDigits.indexOf(ch);
+      return String(index >= 0 ? index : arabicDigits.indexOf(ch));
     });
-    container.appendChild(grid);
+  const toNative = (value, locale) =>
+    String(value).replace(
+      /\d/g,
+      (ch) => (locale.digits || "0123456789")[Number(ch)],
+    );
+  const pad = (value) => String(value).padStart(2, "0");
+  const element = (tag, className, text) => {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  };
+  const button = (className, text, action) => {
+    const node = element("button", className, text);
+    node.type = "button";
+    node.addEventListener("click", action);
+    return node;
+  };
+
+  function popPopup(popup, restoreFocus = false) {
+    const index = popup
+      ? POPUP_STACK.findIndex((item) => item.el === popup)
+      : POPUP_STACK.length - 1;
+    if (index < 0) return;
+    const [item] = POPUP_STACK.splice(index, 1);
+    item.dispose(restoreFocus);
+    item.el.remove();
+    if (!POPUP_STACK.length) document.body.style.overflow = savedOverflow;
   }
 
-  function renderYears(container) {
-    const base = state.yearsBase;
-    const head = document.createElement('div');
-    head.className = 'pk-head';
-    head.innerHTML = `
-      <button type="button" class="pk-nav" data-act="prev">‹</button>
-      <div class="pk-title">
-        <button type="button" class="pk-title-btn" data-act="view-days">${toNative(`${base}–${base + 11}`, locale)}</button>
-      </div>
-      <button type="button" class="pk-nav" data-act="next">›</button>
-    `;
-    container.appendChild(head);
-    const grid = document.createElement('div');
-    grid.className = 'pk-years';
-    for (let y = base; y < base + 12; y++) {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.textContent = toNative(String(y), locale);
-      b.dataset.y = y;
-      if (state.selected && state.selected.y === y) b.classList.add('selected');
-      grid.appendChild(b);
-    }
-    container.appendChild(grid);
-  }
-
-  function render() {
-    if (!state.popup) return;
-    const body = state.popup.querySelector('.pk-body');
-    body.innerHTML = '';
-    if (state.viewMode === 'days') renderDays(body);
-    else if (state.viewMode === 'months') renderMonths(body);
-    else renderYears(body);
-  }
-
-  // ─── مدیریت کلیک داخل پاپ‌آپ (event delegation) ───
-  function handleAction(e) {
-    const t = e.target.closest('[data-act], [data-d], [data-m], [data-y]');
-    if (!t) return;
-    if (t.dataset.act === 'prev') {
-      if (state.viewMode === 'days') {
-        state.view.m--;
-        if (state.view.m < 1) { state.view.m = 12; state.view.y--; }
-      } else if (state.viewMode === 'months') state.view.y--;
-      else state.yearsBase -= 12;
-    } else if (t.dataset.act === 'next') {
-      if (state.viewMode === 'days') {
-        state.view.m++;
-        if (state.view.m > 12) { state.view.m = 1; state.view.y++; }
-      } else if (state.viewMode === 'months') state.view.y++;
-      else state.yearsBase += 12;
-    } else if (t.dataset.act === 'view-months') state.viewMode = 'months';
-    else if (t.dataset.act === 'view-years') {
-      state.yearsBase = Math.floor((state.view.y - 1) / 12) * 12 + 1;
-      state.viewMode = 'years';
-    } else if (t.dataset.act === 'view-days') state.viewMode = 'days';
-    else if (t.dataset.act === 'today') {
-      const tParts = calendar.toParts(calendar.todayISO());
-      state.view.y = tParts.jy;
-      state.view.m = tParts.jm;
-      state.selected = tParts;
-      // پاپ‌آپ باز می‌ماند (طبق درخواست)
-    } else if (t.dataset.d) {
-      const d = +t.dataset.d;
-      const iso = calendar.fromParts(state.view.y, state.view.m, d);
-      state.selected = { y: state.view.y, m: state.view.m, d };
-      commitPick(iso);
-      return;
-    } else if (t.dataset.m) {
-      state.view.m = +t.dataset.m;
-      state.viewMode = 'days';
-    } else if (t.dataset.y) {
-      state.view.y = +t.dataset.y;
-      state.viewMode = 'days';
-    }
-    render();
-  }
-
-  function commitPick(iso) {
-    input.value = formatForInput(iso);
-    onPick && onPick(iso);
-    closePopup();
-  }
-
-  // ─── باز/بستن ───
-  function openPopup() {
-    if (state.popup) return;
-    const iso = parseInput() || calendar.todayISO();
-    const p = calendar.toParts(iso);
-    state.selected = p;
-    state.view = { y: p.jy, m: p.jm };
-    state.viewMode = 'days';
-
-    const popup = document.createElement('div');
-    popup.className = 'pk-popup pk-date';
-    popup.dir = locale.dir || 'rtl';
-    popup.innerHTML = '<div class="pk-body"></div>';
-    popup.addEventListener('click', handleAction);
-    document.body.appendChild(popup);
-    state.popup = popup;
-    positionPopup(popup, input);
-    pushPopup(popup, () => { state.popup = null; });
-    render();
-  }
-
-  function closePopup() {
-    popPopup();
-  }
-
-  // ─── اتصال به input ───
-  input.addEventListener('click', openPopup);
-  input.addEventListener('focus', openPopup);
-  // blur: اعتبارسنجی؛ نامعتبر = revert به مقدار قبلی
-  let lastValid = input.value;
-  input.addEventListener('focus', () => { lastValid = input.value; });
-  input.addEventListener('blur', () => {
-    const raw = input.value.trim();
-    if (!raw) { lastValid = ''; return; }
-    const iso = parseInput();
-    if (!iso) {
-      input.value = lastValid; // revert
-    } else {
-      input.value = formatForInput(iso);
-      lastValid = input.value;
-    }
-  });
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      const iso = parseInput();
-      if (iso) {
-        input.value = formatForInput(iso);
-        onPick && onPick(iso);
-      } else {
-        input.value = lastValid;
+  document.addEventListener(
+    "pointerdown",
+    (event) => {
+      const top = POPUP_STACK.at(-1);
+      if (
+        top &&
+        !top.el.contains(event.target) &&
+        !top.anchor.contains(event.target)
+      )
+        popPopup(top.el);
+    },
+    true,
+  );
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      if (event.key === "Escape" && POPUP_STACK.length) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        popPopup(undefined, true);
       }
+    },
+    true,
+  );
+
+  function mountPopup(input, locale, kind, label, onClose) {
+    const popup = element("div", `pk-popup pk-${kind}`);
+    popup.dir = locale.dir || "rtl";
+    popup.setAttribute("role", "dialog");
+    popup.setAttribute("aria-label", label);
+    const anchor = input.closest(".pk-input-wrap") || input;
+    let frame = 0;
+    const position = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const rect = anchor.getBoundingClientRect();
+        const width = popup.offsetWidth;
+        const height = popup.offsetHeight;
+        const below = rect.bottom + 8;
+        const above = rect.top - height - 8;
+        const isAbove = below + height > innerHeight - 8 && above >= 8;
+        const preferred = locale.dir === "rtl" ? rect.right - width : rect.left;
+        const left = Math.max(8, Math.min(preferred, innerWidth - width - 8));
+        popup.style.left = `${left}px`;
+        popup.style.top = `${Math.max(8, Math.min(isAbove ? above : below, innerHeight - height - 8))}px`;
+        popup.classList.toggle("pk-above", isAbove);
+        popup.style.setProperty(
+          "--pk-arrow-x",
+          `${Math.max(18, Math.min(rect.left + rect.width / 2 - left, width - 18))}px`,
+        );
+        popup.style.visibility = "visible";
+      });
+    };
+    popup.style.visibility = "hidden";
+    if (!POPUP_STACK.length) {
+      savedOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
     }
-  });
-
-  // API عمومی
-  return {
-    setValue(iso) { input.value = formatForInput(iso); lastValid = input.value; },
-    getValue() { return parseInput(); },
-    open: openPopup,
-    close: closePopup,
-  };
-}
-
-/* ═══════════════════════════════════════════════
- *  TIME PICKER — انتخابگر ساعت (دایرهٔ ۲۴ ساعته)
- * ═══════════════════════════════════════════════ */
-function createTimePicker({ input, locale, onPick }) {
-  const state = {
-    h: 8, m: 0,
-    phase: 'hour',   // 'hour' | 'minute'
-    popup: null,
-    drag: false,
-  };
-
-  function formatForInput(h, m) {
-    const s = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-    return toNative(s, locale);
-  }
-  function parseInput() {
-    const raw = normalizeDigits(input.value, locale);
-    if (!raw) return null;
-    let h = null, m = null;
-    if (raw.includes(':')) {
-      const p = raw.split(':');
-      if (p.length !== 2) return null;
-      h = +p[0]; m = +p[1];
-    } else if (/^\d{4}$/.test(raw)) { h = +raw.slice(0, 2); m = +raw.slice(2); }
-    else if (/^\d{3}$/.test(raw)) {
-      if (+raw.slice(0, 2) <= 23) { h = +raw.slice(0, 2); m = +raw[2]; }
-      else { h = +raw[0]; m = +raw.slice(1); }
-    } else if (/^\d{1,2}$/.test(raw)) { h = +raw; m = 0; }
-    else return null;
-    if (h < 0 || h > 23 || m < 0 || m > 59) return null;
-    return { h, m };
+    popup.style.zIndex = String(2100 + POPUP_STACK.length);
+    document.body.appendChild(popup);
+    input.setAttribute("aria-expanded", "true");
+    input.classList.add("pk-input-open");
+    POPUP_STACK.push({
+      el: popup,
+      anchor,
+      dispose(restoreFocus) {
+        cancelAnimationFrame(frame);
+        window.removeEventListener("resize", position);
+        document.removeEventListener("scroll", position, true);
+        input.setAttribute("aria-expanded", "false");
+        input.classList.remove("pk-input-open");
+        onClose(restoreFocus);
+      },
+    });
+    window.addEventListener("resize", position);
+    document.addEventListener("scroll", position, true);
+    position();
+    return { popup, position };
   }
 
-  function render() {
-    if (!state.popup) return;
-    const body = state.popup.querySelector('.pk-body');
-    body.innerHTML = '';
-
-    // نمایشگر دیجیتال
-    const digital = document.createElement('div');
-    digital.className = 'pk-digital';
-    const hBtn = document.createElement('button');
-    hBtn.type = 'button'; hBtn.className = 'pk-seg' + (state.phase === 'hour' ? ' active' : '');
-    hBtn.dataset.phase = 'hour';
-    hBtn.textContent = toNative(String(state.h).padStart(2, '0'), locale);
-    const colon = document.createElement('span'); colon.className = 'pk-colon'; colon.textContent = ':';
-    const mBtn = document.createElement('button');
-    mBtn.type = 'button'; mBtn.className = 'pk-seg' + (state.phase === 'minute' ? ' active' : '');
-    mBtn.dataset.phase = 'minute';
-    mBtn.textContent = toNative(String(state.m).padStart(2, '0'), locale);
-    digital.appendChild(hBtn); digital.appendChild(colon); digital.appendChild(mBtn);
-    body.appendChild(digital);
-
-    // صفحهٔ دایره‌ای
-    const dial = document.createElement('div');
-    dial.className = 'pk-dial';
-    // برچسب‌ها
-    const count = state.phase === 'hour' ? 24 : 12;
-    const step = state.phase === 'hour' ? 1 : 5;
-    for (let i = 0; i < count; i++) {
-      const v = i * step;
-      // زاویه: 00 بالا، ساعت‌گرد
-      const angle = (v * (state.phase === 'hour' ? 15 : 6)) * Math.PI / 180;
-      const x = 50 + 42 * Math.sin(angle);
-      const y = 50 - 42 * Math.cos(angle);
-      const lbl = document.createElement('span');
-      lbl.className = 'pk-label';
-      const isActive = state.phase === 'hour' ? v === state.h : v === state.m;
-      if (isActive) lbl.classList.add('active');
-      lbl.style.left = x + '%';
-      lbl.style.top = y + '%';
-      lbl.textContent = toNative(String(v).padStart(2, '0'), locale);
-      dial.appendChild(lbl);
+  // بخش فعال از محل نشانگر یا انتخاب متن مشخص می‌شود؛ انتخاب کل فیلد یعنی بخش آخر.
+  function activeSegment(input, widths) {
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? start;
+    if (start === 0 && end === input.value.length) return widths.length - 1;
+    const segments = [...input.value.matchAll(/[0-9۰-۹٠-٩]+/g)];
+    if (segments.length === widths.length) {
+      const index = segments.findIndex(
+        (part) => start >= part.index && start <= part.index + part[0].length,
+      );
+      return index < 0 ? widths.length - 1 : index;
     }
-    // عقربه
-    const hand = document.createElement('div');
-    hand.className = 'pk-hand';
-    const angleDeg = state.phase === 'hour'
-      ? (state.h + state.m / 60) * 15
-      : state.m * 6;
-    hand.style.transform = `rotate(${angleDeg}deg)`;
-    const dot = document.createElement('span'); dot.className = 'pk-hand-dot';
-    hand.appendChild(dot);
-    dial.appendChild(hand);
-    // مرکز
-    const center = document.createElement('span'); center.className = 'pk-center';
-    dial.appendChild(center);
-    body.appendChild(dial);
-
-    // متن راهنما
-    const hint = document.createElement('div');
-    hint.className = 'pk-hint';
-    hint.textContent = state.phase === 'hour'
-      ? 'ساعت را انتخاب کنید (۲۴ ساعته)'
-      : 'دقیقه را انتخاب کنید (بین مضرب‌های ۵ هم قابل انتخاب است)';
-    body.appendChild(hint);
-  }
-
-  // اعمال کلیک/کشیدن روی صفحه
-  function applyFromPoint(e) {
-    const dial = state.popup.querySelector('.pk-dial');
-    if (!dial) return;
-    const r = dial.getBoundingClientRect();
-    const cx = r.left + r.width / 2;
-    const cy = r.top + r.height / 2;
-    const dx = e.clientX - cx;
-    const dy = e.clientY - cy;
-    // زاویه از بالا، ساعت‌گرد مثبت
-    const ang = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
-    if (state.phase === 'hour') {
-      state.h = Math.round(ang / 15) % 24;
-    } else {
-      state.m = Math.round(ang / 6) % 60; // هر ۶ درجه = ۱ دقیقه
+    let offset = 0;
+    for (let i = 0; i < widths.length; i++) {
+      offset += widths[i];
+      if (start < offset) return i;
     }
-    render();
+    return widths.length - 1;
   }
 
-  function handleAction(e) {
-    const t = e.target.closest('[data-phase]');
-    if (t) {
-      state.phase = t.dataset.phase;
+  function selectSegment(input, index) {
+    const part = [...input.value.matchAll(/[0-9۰-۹٠-٩]+/g)][index];
+    if (part) input.setSelectionRange(part.index, part.index + part[0].length);
+  }
+
+  function bindInput({
+    input,
+    open,
+    parse,
+    write,
+    clear,
+    commit,
+    step,
+    label,
+    icon,
+  }) {
+    const controller = new AbortController();
+    const listen = (type, action) =>
+      input.addEventListener(type, action, { signal: controller.signal });
+    let wrapper = null,
+      trigger = null;
+    input.setAttribute("aria-haspopup", "dialog");
+    input.setAttribute("aria-expanded", "false");
+    if (!input.getAttribute("aria-label"))
+      input.setAttribute("aria-label", label);
+    const remember = () => {
+      input.classList.remove("invalid");
+      input.removeAttribute("aria-invalid");
+    };
+    const restoreFocus = () => input.focus({ preventScroll: true });
+    // فوکوس به‌تنهایی انتخابگر را باز نمی‌کند؛ جهت‌نما برای ویرایش بخش فعال است.
+    listen("click", () => open());
+    listen("input", () => {
+      clear();
+      remember();
+    });
+    const validate = () => {
+      if (!input.value.trim()) {
+        clear();
+        remember();
+        return true;
+      }
+      const parsed = parse();
+      if (parsed === null) {
+        clear();
+        input.classList.add("invalid");
+        input.setAttribute("aria-invalid", "true");
+        if (typeof window.showToast === "function")
+          window.showToast("error", `${label} معتبر نیست.`);
+        return false;
+      }
+      write(parsed);
+      remember();
+      return true;
+    };
+    listen("blur", validate);
+    listen("keydown", (event) => {
+      if (
+        input.disabled ||
+        input.readOnly ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey
+      )
+        return;
+      if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+        event.preventDefault();
+        event.stopPropagation();
+        step(event.key === "ArrowUp" ? 1 : -1);
+        remember();
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      } else if (event.key === "Enter") {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!validate()) return;
+        const parsed = parse();
+        if (parsed !== null) commit(parsed);
+      }
+    });
+    if (icon) {
+      wrapper = element("div", "pk-input-wrap");
+      input.before(wrapper);
+      wrapper.appendChild(input);
+      trigger = button("pk-input-trigger", "", () => open(true));
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("viewBox", "0 0 24 24");
+      svg.setAttribute("fill", "none");
+      svg.setAttribute("stroke", "currentColor");
+      svg.setAttribute("stroke-width", "1.8");
+      svg.setAttribute("aria-hidden", "true");
+      const circle = document.createElementNS(svg.namespaceURI, "circle");
+      circle.setAttribute("cx", "12");
+      circle.setAttribute("cy", "12");
+      circle.setAttribute("r", "9");
+      const hand = document.createElementNS(svg.namespaceURI, "path");
+      hand.setAttribute("d", "M12 7v5l3 2");
+      svg.append(circle, hand);
+      trigger.appendChild(svg);
+      trigger.setAttribute("aria-label", `باز کردن انتخابگر ${label}`);
+      trigger.disabled = input.disabled;
+      wrapper.appendChild(trigger);
+    }
+    return {
+      restoreFocus,
+      remember,
+      setDisabled(disabled) {
+        input.disabled = !!disabled;
+        if (trigger) trigger.disabled = !!disabled;
+      },
+      destroy() {
+        controller.abort();
+        if (wrapper?.parentNode) {
+          wrapper.before(input);
+          wrapper.remove();
+        }
+        input.classList.remove("pk-input-open");
+        input.removeAttribute("aria-haspopup");
+        input.removeAttribute("aria-expanded");
+      },
+    };
+  }
+
+  function createDatePicker({ input, calendar, locale, onPick }) {
+    const label =
+      input
+        .closest(".form-group")
+        ?.querySelector("label")
+        ?.textContent.trim() || "تاریخ تحویل";
+    let overlay = null;
+    let view = { y: 1405, m: 1 };
+    let selected = null;
+    let mode = "days";
+    let yearsBase = 1400;
+    const clear = () => {
+      delete input.dataset.iso;
+    };
+    const validParts = (y, m, d) =>
+      Number.isInteger(y) &&
+      y >= 1300 &&
+      y <= 1500 &&
+      m >= 1 &&
+      m <= 12 &&
+      d >= 1 &&
+      d <= calendar.monthLen(y, m);
+    const parse = () => {
+      const raw = toLatin(input.value, locale).trim();
+      let parts;
+      if (/^\d{4}[/.-]\d{1,2}[/.-]\d{1,2}$/.test(raw))
+        parts = raw.split(/[/.-]/).map(Number);
+      else if (/^\d{8}$/.test(raw))
+        parts = [+raw.slice(0, 4), +raw.slice(4, 6), +raw.slice(6)];
+      else if (/^\d{6}$/.test(raw))
+        parts = [1400 + +raw.slice(0, 2), +raw.slice(2, 4), +raw.slice(4)];
+      else return null;
+      return validParts(...parts) ? calendar.fromParts(...parts) : null;
+    };
+    const write = (iso) => {
+      const p = calendar.toParts(iso);
+      input.value = toNative(`${p.jy}/${pad(p.jm)}/${pad(p.jd)}`, locale);
+      input.dataset.iso = iso;
+    };
+    const close = (restoreFocus = false) => {
+      if (overlay) popPopup(overlay.popup, restoreFocus);
+    };
+    const commit = (iso) => {
+      write(iso);
+      binding.remember();
+      if (onPick) onPick(iso);
+      close(true);
+    };
+    const makeTitle = (text, action) => button("pk-title-btn", text, action);
+    function navigate(step) {
+      if (mode === "days") {
+        const index = view.y * 12 + view.m - 1 + step;
+        const y = Math.floor(index / 12);
+        if (y < 1300 || y > 1500) return;
+        view = { y, m: (index % 12) + 1 };
+      } else if (mode === "months")
+        view.y = Math.max(1300, Math.min(1500, view.y + step));
+      else yearsBase = Math.max(1300, Math.min(1489, yearsBase + step * 12));
       render();
     }
-  }
-
-  function commitPick() {
-    const s = formatForInput(state.h, state.m);
-    input.value = s;
-    onPick && onPick(`${String(state.h).padStart(2, '0')}:${String(state.m).padStart(2, '0')}:00`);
-    closePopup();
-  }
-
-  function openPopup() {
-    if (state.popup) return;
-    const parsed = parseInput();
-    if (parsed) { state.h = parsed.h; state.m = parsed.m; }
-    state.phase = 'hour';
-
-    const popup = document.createElement('div');
-    popup.className = 'pk-popup pk-time';
-    popup.dir = locale.dir || 'rtl';
-    popup.innerHTML = '<div class="pk-body"></div>';
-    popup.addEventListener('click', handleAction);
-
-    // کشیدن روی صفحه برای انتخاب دقیقه بین مضرب‌های ۵
-    popup.addEventListener('pointerdown', (e) => {
-      const dial = e.target.closest('.pk-dial');
-      if (!dial) return;
-      dial.setPointerCapture(e.pointerId);
-      state.drag = true;
-      applyFromPoint(e);
-    });
-    popup.addEventListener('pointermove', (e) => { if (state.drag) applyFromPoint(e); });
-    popup.addEventListener('pointerup', (e) => {
-      if (!state.drag) return;
-      state.drag = false;
-      // اگر در حالت دقیقه بود، با رها کردن، انتخاب نهایی انجام شود
-      if (state.phase === 'minute') {
-        // کمی تأخیر تا render آخر دیده شود
-        setTimeout(commitPick, 120);
+    function render() {
+      if (!overlay) return;
+      const { popup } = overlay;
+      popup.replaceChildren();
+      const head = element("div", "pk-head");
+      const prev = button("pk-nav", "‹", () => navigate(-1));
+      const next = button("pk-nav", "›", () => navigate(1));
+      prev.setAttribute("aria-label", "قبلی");
+      next.setAttribute("aria-label", "بعدی");
+      const title = element("div", "pk-title");
+      if (mode === "days")
+        title.appendChild(
+          makeTitle(calendar.months[view.m - 1], () => {
+            mode = "months";
+            render();
+          }),
+        );
+      title.appendChild(
+        makeTitle(
+          toNative(
+            mode === "years" ? `${yearsBase}–${yearsBase + 11}` : view.y,
+            locale,
+          ),
+          () => {
+            if (mode === "years") mode = "days";
+            else {
+              yearsBase = Math.max(
+                1300,
+                Math.min(1489, view.y - (view.y % 12)),
+              );
+              mode = "years";
+            }
+            render();
+          },
+        ),
+      );
+      head.append(prev, title, next);
+      popup.appendChild(head);
+      if (mode === "days") {
+        const week = element("div", "pk-week");
+        const start = calendar.weekStart || 0;
+        const fullDays = [
+          "شنبه",
+          "یکشنبه",
+          "دوشنبه",
+          "سه‌شنبه",
+          "چهارشنبه",
+          "پنجشنبه",
+          "جمعه",
+        ];
+        const shortDays = ["شن", "یک", "دو", "سه", "چهار", "پنج", "جم"];
+        for (let i = 0; i < 7; i++) {
+          const dayIndex = (i + start) % 7;
+          const day = element(
+            "span",
+            "",
+            locale.dir === "rtl"
+              ? shortDays[dayIndex]
+              : calendar.weekDays[dayIndex],
+          );
+          day.title = fullDays[dayIndex];
+          week.appendChild(day);
+        }
+        const grid = element("div", "pk-grid");
+        const firstISO = calendar.fromParts(view.y, view.m, 1);
+        const [gy, gm, gd] = firstISO.split("-").map(Number);
+        // weekStart در تقویم تزریق‌شده اندیس شنبه‌محور است، نه getDay میلادی.
+        const offset = (new Date(gy, gm - 1, gd).getDay() + 1 - start + 7) % 7;
+        for (let i = 0; i < offset; i++)
+          grid.appendChild(element("span", "pk-blank"));
+        const today = calendar.todayISO();
+        for (let d = 1; d <= calendar.monthLen(view.y, view.m); d++) {
+          const iso = calendar.fromParts(view.y, view.m, d);
+          const day = button("pk-day", toNative(d, locale), () => commit(iso));
+          day.dataset.d = String(d);
+          day.classList.toggle("today", iso === today);
+          day.classList.toggle("selected", iso === selected);
+          day.setAttribute("aria-pressed", String(iso === selected));
+          day.setAttribute(
+            "aria-label",
+            toNative(`${d} ${calendar.months[view.m - 1]} ${view.y}`, locale),
+          );
+          grid.appendChild(day);
+        }
+        const foot = element("div", "pk-foot");
+        foot.appendChild(
+          button(
+            "pk-today",
+            toNative(
+              (() => {
+                const p = calendar.toParts(calendar.todayISO());
+                return `${p.jy}/${pad(p.jm)}/${pad(p.jd)}`;
+              })(),
+              locale,
+            ),
+            () => commit(calendar.todayISO()),
+          ),
+        );
+        popup.append(week, grid, foot);
       } else {
-        // بعد از انتخاب ساعت، خودکار به حالت دقیقه برو
-        state.phase = 'minute';
+        const grid = element(
+          "div",
+          mode === "months" ? "pk-months" : "pk-years",
+        );
+        const p = selected ? calendar.toParts(selected) : null;
+        const count = 12;
+        for (let i = 0; i < count; i++) {
+          const value = mode === "months" ? i + 1 : yearsBase + i;
+          const text =
+            mode === "months" ? calendar.months[i] : toNative(value, locale);
+          const item = button("", text, () => {
+            if (mode === "months") view.m = value;
+            else view.y = value;
+            mode = "days";
+            render();
+          });
+          item.classList.toggle(
+            "selected",
+            !!p &&
+              (mode === "months"
+                ? p.jy === view.y && p.jm === value
+                : p.jy === value),
+          );
+          grid.appendChild(item);
+        }
+        popup.appendChild(grid);
+      }
+      overlay.position();
+    }
+    function open(focusPopup = false) {
+      if (input.disabled || input.readOnly) return;
+      if (!overlay) {
+        selected = parse();
+        const p = calendar.toParts(selected || calendar.todayISO());
+        view = { y: p.jy, m: p.jm };
+        mode = "days";
+        overlay = mountPopup(
+          input,
+          locale,
+          "date",
+          `انتخاب ${label}`,
+          (restoreFocus) => {
+            overlay = null;
+            if (restoreFocus) binding.restoreFocus();
+          },
+        );
         render();
       }
+      if (focusPopup === true)
+        requestAnimationFrame(() => {
+          overlay?.popup.querySelector(".selected, .pk-day, button")?.focus();
+        });
+    }
+    function step(direction) {
+      const raw = toLatin(input.value, locale);
+      const index = activeSegment(
+        input,
+        /^\d{6}$/.test(raw) ? [2, 2, 2] : [4, 2, 2],
+      );
+      const p = calendar.toParts(parse() || calendar.todayISO());
+      let { jy, jm, jd } = p;
+      if (index === 0) jy = Math.max(1300, Math.min(1500, jy + direction));
+      if (index === 1) jm = Math.max(1, Math.min(12, jm + direction));
+      const limit = calendar.monthLen(jy, jm);
+      jd = Math.min(jd, limit);
+      if (index === 2) jd = Math.max(1, Math.min(limit, jd + direction));
+      const iso = calendar.fromParts(jy, jm, jd);
+      write(iso);
+      selected = iso;
+      view = { y: jy, m: jm };
+      if (overlay) {
+        mode = "days";
+        render();
+      }
+      if (onPick) onPick(iso);
+      selectSegment(input, index);
+    }
+    const binding = bindInput({
+      input,
+      open,
+      parse,
+      write,
+      clear,
+      commit,
+      step,
+      label,
     });
-
-    document.body.appendChild(popup);
-    state.popup = popup;
-    positionPopup(popup, input);
-    pushPopup(popup, () => { state.popup = null; });
-    render();
+    return {
+      open,
+      close,
+      setDisabled(disabled) {
+        if (disabled) close();
+        binding.setDisabled(disabled);
+      },
+      destroy() {
+        close();
+        binding.destroy();
+      },
+      getValue() {
+        const iso = parse();
+        if (iso) input.dataset.iso = iso;
+        else clear();
+        return iso;
+      },
+      setValue(iso) {
+        if (!iso) {
+          input.value = "";
+          clear();
+        } else write(iso);
+        binding.remember();
+      },
+    };
   }
 
-  function closePopup() { popPopup(); }
-
-  // اتصال به input
-  let lastValid = input.value;
-  input.addEventListener('focus', () => { lastValid = input.value; });
-  input.addEventListener('click', openPopup);
-  input.addEventListener('blur', () => {
-    const raw = input.value.trim();
-    if (!raw) { lastValid = ''; return; }
-    const p = parseInput();
-    if (!p) { input.value = lastValid; }
-    else { input.value = formatForInput(p.h, p.m); lastValid = input.value; }
-  });
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      const p = parseInput();
-      if (p) {
-        input.value = formatForInput(p.h, p.m);
-        onPick && onPick(`${String(p.h).padStart(2, '0')}:${String(p.m).padStart(2, '0')}:00`);
-      } else {
-        input.value = lastValid;
+  function createTimePicker({ input, locale, onPick }) {
+    const label =
+      input
+        .closest(".form-group")
+        ?.querySelector("label")
+        ?.textContent.trim() || "ساعت تحویل";
+    let overlay = null;
+    let h = 8,
+      m = 0,
+      phase = "hour",
+      pointerId = null;
+    let dial, labels, hand, hourButton, minuteButton, hint;
+    const clear = () => {
+      delete input.dataset.hms;
+    };
+    const parse = () => {
+      const raw = toLatin(input.value, locale).trim();
+      let match = /^(\d{1,2}):(\d{2})(?::00)?$/.exec(raw);
+      if (!match && /^\d{4}$/.test(raw))
+        match = [raw, raw.slice(0, 2), raw.slice(2)];
+      if (!match && /^\d{1,2}$/.test(raw)) match = [raw, raw, "0"];
+      if (!match) return null;
+      const value = { h: +match[1], m: +match[2] };
+      return value.h <= 23 && value.m <= 59 ? value : null;
+    };
+    const write = (value) => {
+      input.value = toNative(`${pad(value.h)}:${pad(value.m)}`, locale);
+      input.dataset.hms = `${pad(value.h)}:${pad(value.m)}:00`;
+    };
+    const close = (restoreFocus = false) => {
+      if (overlay) popPopup(overlay.popup, restoreFocus);
+    };
+    const commit = (value) => {
+      write(value);
+      binding.remember();
+      if (onPick) onPick(input.dataset.hms);
+      close(true);
+    };
+    function paint() {
+      labels.replaceChildren();
+      const isHour = phase === "hour";
+      const count = isHour ? 24 : 12;
+      for (let i = 0; i < count; i++) {
+        const value = isHour ? i : i * 5;
+        const inner = isHour && value >= 1 && value <= 12;
+        const angle =
+          ((isHour ? (value % 12) * 30 : value * 6) * Math.PI) / 180;
+        const radius = inner ? 28 : 40;
+        const item = element("span", "pk-label", toNative(pad(value), locale));
+        item.style.left = `${50 + radius * Math.sin(angle)}%`;
+        item.style.top = `${50 - radius * Math.cos(angle)}%`;
+        item.classList.toggle("active", value === (isHour ? h : m));
+        labels.appendChild(item);
       }
+      const radius = isHour && h >= 1 && h <= 12 ? 28 : 40;
+      const angle = isHour ? (h % 12) * 30 : m * 6;
+      hand.style.height = `${radius}%`;
+      hand.style.top = `${50 - radius}%`;
+      hand.style.transform = `rotate(${angle}deg)`;
+      hourButton.textContent = toNative(pad(h), locale);
+      minuteButton.textContent = toNative(pad(m), locale);
+      hourButton.classList.toggle("active", isHour);
+      minuteButton.classList.toggle("active", !isHour);
+      hourButton.setAttribute("aria-pressed", String(isHour));
+      minuteButton.setAttribute("aria-pressed", String(!isHour));
+      dial.setAttribute(
+        "aria-label",
+        isHour
+          ? "انتخاب ساعت؛ با کلیدهای جهت‌نما تغییر دهید"
+          : "انتخاب دقیقه؛ با کلیدهای جهت‌نما تغییر دهید",
+      );
+      dial.setAttribute("aria-valuemax", isHour ? "23" : "59");
+      dial.setAttribute("aria-valuenow", String(isHour ? h : m));
+      hint.textContent = isHour
+        ? "ساعت را انتخاب کنید (۲۴ ساعته)"
+        : "دقیقه را انتخاب کنید (۰ تا ۵۹)";
     }
-  });
-
-  return {
-    setValue(h, m) { input.value = formatForInput(h, m); lastValid = input.value; },
-    getValue() { return parseInput(); },
-    open: openPopup,
-    close: closePopup,
-  };
-}
-
-// خروجی سراسری برای استفاده در app.js
-window.Pickers = { createDatePicker, createTimePicker };
+    function applyPoint(event) {
+      const rect = dial.getBoundingClientRect();
+      const dx = event.clientX - rect.left - rect.width / 2;
+      const dy = event.clientY - rect.top - rect.height / 2;
+      const angle = ((Math.atan2(dx, -dy) * 180) / Math.PI + 360) % 360;
+      if (phase === "hour") {
+        const slot = Math.round(angle / 30) % 12;
+        const inner = Math.hypot(dx, dy) < rect.width * 0.34;
+        h = inner ? slot || 12 : slot === 0 ? 0 : slot + 12;
+      } else m = Math.round(angle / 6) % 60;
+      paint();
+    }
+    function open(focusPopup = false) {
+      if (input.disabled || input.readOnly) return;
+      if (!overlay) {
+        const parsed = parse();
+        if (parsed) {
+          h = parsed.h;
+          m = parsed.m;
+        }
+        phase = "hour";
+        overlay = mountPopup(
+          input,
+          locale,
+          "time",
+          `انتخاب ${label}`,
+          (restoreFocus) => {
+            pointerId = null;
+            overlay = null;
+            if (restoreFocus) binding.restoreFocus();
+          },
+        );
+        dial = element("div", "pk-dial");
+        dial.dir = "ltr";
+        dial.tabIndex = 0;
+        dial.setAttribute("role", "slider");
+        dial.setAttribute("aria-valuemin", "0");
+        labels = element("div", "pk-labels");
+        labels.setAttribute("aria-hidden", "true");
+        hand = element("div", "pk-hand");
+        hand.setAttribute("aria-hidden", "true");
+        hand.appendChild(element("span", "pk-hand-dot"));
+        dial.append(hand, labels, element("span", "pk-center"));
+        const digital = element("div", "pk-digital");
+        digital.dir = "ltr";
+        hourButton = button("pk-seg", "", () => {
+          phase = "hour";
+          paint();
+        });
+        minuteButton = button("pk-seg", "", () => {
+          phase = "minute";
+          paint();
+        });
+        hourButton.setAttribute("aria-label", "انتخاب ساعت");
+        minuteButton.setAttribute("aria-label", "انتخاب دقیقه");
+        digital.append(
+          hourButton,
+          element("span", "pk-colon", ":"),
+          minuteButton,
+        );
+        hint = element("div", "pk-hint");
+        hint.setAttribute("aria-live", "polite");
+        const foot = element("div", "pk-foot");
+        foot.appendChild(button("pk-today", "تأیید", () => commit({ h, m })));
+        overlay.popup.append(dial, digital, hint, foot);
+        // خود صفحهٔ ساعت هنگام کشیدن بازسازی نمی‌شود؛ pointer capture پایدار می‌ماند.
+        dial.addEventListener("pointerdown", (event) => {
+          if (!event.isPrimary || event.button !== 0 || pointerId !== null)
+            return;
+          event.preventDefault();
+          dial.focus();
+          pointerId = event.pointerId;
+          dial.setPointerCapture(pointerId);
+          applyPoint(event);
+        });
+        dial.addEventListener("pointermove", (event) => {
+          if (pointerId === event.pointerId) applyPoint(event);
+        });
+        dial.addEventListener("pointerup", (event) => {
+          if (pointerId !== event.pointerId) return;
+          applyPoint(event);
+          pointerId = null;
+          if (dial.hasPointerCapture(event.pointerId))
+            dial.releasePointerCapture(event.pointerId);
+          if (phase === "hour") {
+            phase = "minute";
+            paint();
+          } else commit({ h, m });
+        });
+        const cancel = () => {
+          pointerId = null;
+        };
+        dial.addEventListener("pointercancel", cancel);
+        dial.addEventListener("lostpointercapture", cancel);
+        dial.addEventListener("keydown", (event) => {
+          const steps = {
+            ArrowRight: 1,
+            ArrowUp: 1,
+            ArrowLeft: -1,
+            ArrowDown: -1,
+          };
+          if (event.key in steps) {
+            event.preventDefault();
+            if (phase === "hour") h = (h + steps[event.key] + 24) % 24;
+            else m = (m + steps[event.key] + 60) % 60;
+            paint();
+          } else if (event.key === "Enter") {
+            event.preventDefault();
+            if (phase === "hour") {
+              phase = "minute";
+              paint();
+            } else commit({ h, m });
+          }
+        });
+        paint();
+        overlay.position();
+      }
+      if (focusPopup === true)
+        requestAnimationFrame(() => {
+          if (overlay) dial.focus();
+        });
+    }
+    function step(direction) {
+      const index = activeSegment(input, [2, 2]);
+      const value = parse() || { h: 8, m: 0 };
+      if (index === 0) value.h = Math.max(0, Math.min(23, value.h + direction));
+      else value.m = Math.max(0, Math.min(59, value.m + direction));
+      h = value.h;
+      m = value.m;
+      write(value);
+      if (overlay) paint();
+      if (onPick) onPick(input.dataset.hms);
+      selectSegment(input, index);
+    }
+    const binding = bindInput({
+      input,
+      open,
+      parse,
+      write,
+      clear,
+      commit,
+      step,
+      label,
+      icon: true,
+    });
+    return {
+      open,
+      close,
+      setDisabled(disabled) {
+        if (disabled) close();
+        binding.setDisabled(disabled);
+      },
+      destroy() {
+        close();
+        binding.destroy();
+      },
+      getValue() {
+        const value = parse();
+        if (value) write(value);
+        else clear();
+        return value;
+      },
+      setValue(hour, minute) {
+        if (hour === null || hour === undefined) {
+          input.value = "";
+          clear();
+        } else if (
+          Number.isInteger(hour) &&
+          Number.isInteger(minute) &&
+          hour >= 0 &&
+          hour <= 23 &&
+          minute >= 0 &&
+          minute <= 59
+        )
+          write({ h: hour, m: minute });
+        binding.remember();
+      },
+    };
+  }
+  window.Pickers = { createDatePicker, createTimePicker };
+})();

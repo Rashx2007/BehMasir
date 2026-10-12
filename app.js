@@ -98,7 +98,12 @@ const defaultSamples = [
 function dateOffset(days) {
   const t = new Date();
   t.setDate(t.getDate() - days);
-  return t.toLocaleDateString("en-CA");
+  return t.toLocaleDateString("en-CA", {
+    timeZone: "Asia/Tehran",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
 }
 const defaultHistory = [
   {
@@ -257,9 +262,15 @@ let nextVehicleId = state.nextVehicleId;
 let centers = state.centers; // مراکز (مبدأ/مقصد) ثبت‌شده توسط ادمین
 let nextCenterId = state.nextCenterId;
 samples.forEach((s) => {
-  if (!s.date) s.date = new Date().toLocaleDateString("en-CA");
+  if (!s.date) s.date = dateOffset(0);
 });
-const todayStr = () => new Date().toLocaleDateString("en-CA");
+const todayStr = () =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tehran",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
 let history = state.history || [];
 history = history.filter(
   (h) => (new Date() - new Date(h.date)) / 86400000 <= 7,
@@ -334,8 +345,19 @@ const OWNERSHIP_LABELS = {
 
 // آیا خودرو در این ساعت مشخص فعال است؟ (شیفت کاری)
 function isWithinShift(car, time) {
-  if (!car.shiftStart || !car.shiftEnd) return true; // ۲۴ساعته
-  return time >= car.shiftStart && time <= car.shiftEnd;
+  if (!car.shiftStart && !car.shiftEnd) return true;
+  const toMinutes = (value) => {
+    const match = /^(\d{2}):(\d{2})$/.exec(String(value || ""));
+    if (!match || +match[1] > 23 || +match[2] > 59) return null;
+    return +match[1] * 60 + +match[2];
+  };
+  const current = toMinutes(time),
+    start = toMinutes(car.shiftStart),
+    end = toMinutes(car.shiftEnd);
+  if (current === null || start === null || end === null) return false;
+  return start <= end
+    ? current >= start && current <= end
+    : current >= start || current <= end;
 }
 
 // اختلاف دو ساعت "HH:MM" به دقیقه (مقدار مطلق)
@@ -675,19 +697,12 @@ function recentBox(days, total) {
   const max = Math.max(...days.map((d) => d.value), 1);
   const bars = days
     .map((d, idx) => {
-      const label =
-        idx === days.length - 1
-          ? "امروز"
-          : idx === days.length - 2
-            ? "دیروز"
-            : parseLocalDate(d.date).toLocaleDateString("fa-IR", {
-                weekday: "long",
-              });
+      const label = formatRouteDate(d.date);
       const h = d.value ? Math.max(Math.round((d.value / max) * 100), 8) : 3;
       return `<div class="recent-day">
         <div class="recent-bar-wrap"><div class="recent-bar" style="height:${h}%"></div></div>
         <div class="recent-count">${faNum(d.value)}</div>
-        <div class="recent-label">${label}</div>
+        <div class="recent-label">${esc(label)}</div>
       </div>`;
     })
     .join("");
@@ -806,8 +821,7 @@ function renderRequests() {
 function renderHistory() {
   const tbody = document.getElementById("historyTbody");
   if (!tbody) return;
-  const faDate = (d) =>
-    new Date(d).toLocaleDateString("fa-IR", { month: "long", day: "numeric" });
+  const faDate = (d) => formatRouteDate(d);
   const rows =
     historyFilter === "all"
       ? history
@@ -878,8 +892,12 @@ function addSample() {
   const carId = parseInt(document.getElementById("carSelect").value);
   const unit = document.getElementById("unitInput").value.trim();
   // مقادیر ISO/HMS که picker مستقیماً در dataset ذخیره کرده است
-  const timeRaw = timeInput.dataset.hms || timeInput.value;
-  const dateRaw = dateInput.dataset.iso || dateInput.value;
+  // مقدار فعلی فیلد ملاک است تا dataset قدیمی پس از پاک‌کردن فرم ثبت نشود.
+  const pickedTime = window._timePicker?.getValue();
+  const timeRaw = pickedTime
+    ? `${String(pickedTime.h).padStart(2, "0")}:${String(pickedTime.m).padStart(2, "0")}:00`
+    : "";
+  const dateRaw = window._datePicker?.getValue() || "";
   const alertEl = document.getElementById("formAlert");
   const errorIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
   if (!origin || !destination || !timeRaw || !unit || !dateRaw) {
@@ -890,8 +908,9 @@ function addSample() {
     alertEl.innerHTML = `<div class="alert alert-error">${errorIcon} مبدأ و مقصد نمی‌توانند یکسان باشند.</div>`;
     return;
   }
-  const time = normalizeTimeInput(timeRaw);
-  const dateISO = normalizeDateInput(dateRaw);
+  // انتخابگرها مقدار معتبر و نرمال‌شده را برمی‌گردانند.
+  const time = timeRaw.slice(0, 5);
+  const dateISO = dateRaw;
 
   alertEl.innerHTML = "";
   openRouteOptionsModal({
@@ -931,11 +950,15 @@ function buildRouteOptions({
     cars.forEach((car) => {
       if (car.status !== "ok") return;
       if (loadOn(car) >= capacityOf(car)) return;
-      return;
       if (!isWithinShift(car, time)) return;
 
       samples
-        .filter((s) => s.carId === car.id && s.date === reqDate)
+        .filter(
+          (s) =>
+            s.carId === car.id &&
+            s.date === reqDate &&
+            s.status !== "delivered",
+        )
         .forEach((s) => {
           const sO = locMap[s.origin],
             sD = locMap[s.destination];
@@ -959,7 +982,7 @@ function buildRouteOptions({
               estMin: Math.round(((dOrigin + dDest) / 30) * 60) + 5,
               withSample: s,
               label: `ترکیب با سفر موجود در ${car.name}`,
-              desc: `این سفر با درخواست «${esc(s.origin)} ← ${esc(s.destination)}» (ساعت ${s.time}) در همان ${car.name} هم‌پوشانی مسیری دارد. اختلاف زمانی: ${timeDiff} دقیقه.`,
+              desc: `این سفر با درخواست «${s.origin} ← ${s.destination}» (ساعت ${s.time}) در همان ${car.name} هم‌پوشانی مسیری دارد. اختلاف زمانی: ${timeDiff} دقیقه.`,
             });
           }
         });
@@ -971,7 +994,6 @@ function buildRouteOptions({
   cars.forEach((car) => {
     if (car.status !== "ok") return;
     if (loadOn(car) >= capacityOf(car)) return;
-    return;
     if (!isWithinShift(car, time)) return;
     if (clusterCarIds.has(car.id)) return; // قبلاً به‌عنوان گزینه ترکیبی اضافه شد
 
@@ -980,20 +1002,35 @@ function buildRouteOptions({
     options.push({
       type: "solo",
       carId: car.id,
-      score: (isPreferred ? 5 : 0) - loadOn(car), // کمی اولویت به خودروی انتخابی کاربر و کم‌بارتر
+      score: -loadOn(car) / capacityOf(car), // نسبت اشغال روز درخواست؛ بدون امتیاز انتخاب دستی
       distKm: dDirect.toFixed(2),
       estMin: Math.round((dDirect / 30) * 60) + 5,
       label: `سفر مستقل با ${car.name}`,
-      desc: isPreferred
-        ? "خودرویی که خودتان انتخاب کرده بودید؛ بدون ترکیب با سفر دیگری."
-        : "این خودرو ظرفیت آزاد و شیفت کاری مناسب برای این بازه زمانی دارد.",
+      desc: `${isPreferred ? "این خودرو در فرم انتخاب شده است؛ انتخاب دستی امتیاز اضافه ندارد. " : ""}نسبت ظرفیت اشغال‌شدهٔ روز درخواست: ${faNum(Math.round((loadOn(car) / capacityOf(car)) * 100))}٪.`,
     });
   });
 
   // مرتب‌سازی بر اساس امتیاز (بهترین اول)
-  options.sort((a, b) => b.score - a.score);
+  options.sort((a, b) => {
+    // سفر ترکیبی معتبر، سپس نسبت اشغال کمتر؛ انتخاب فرم حتی در تساوی دخالت ندارد.
+    const typeOrder =
+      Number(b.type === "cluster") - Number(a.type === "cluster");
+    if (typeOrder) return typeOrder;
+    if (a.score !== b.score) return b.score - a.score;
+    const aCar = cars.find((car) => car.id === a.carId);
+    const bCar = cars.find((car) => car.id === b.carId);
+    const remainingOrder =
+      capacityOf(bCar) - loadOn(bCar) - (capacityOf(aCar) - loadOn(aCar));
+    return (
+      remainingOrder ||
+      a.carId - b.carId ||
+      (a.withSample?.id || 0) - (b.withSample?.id || 0)
+    );
+  });
   return options.slice(0, 4); // حداکثر ۴ گزینه برای دمو، تا انتخاب برای کاربر سخت نشود
 }
+
+let vehicleShiftPickers = null;
 
 let pendingRequest = null; // درخواست در حال بررسی (هنوز ثبت نشده)
 let pendingOptions = [];
@@ -1030,6 +1067,15 @@ function openRouteOptionsModal(request) {
   renderRouteOptionsModal();
 }
 
+// تاریخِ درخواست با همان تقویم جلالی انتخابگر نمایش داده می‌شود.
+function formatRouteDate(iso) {
+  const { jy, jm, jd } = jalaliCalendar.toParts(iso);
+  return `${jy}/${String(jm).padStart(2, "0")}/${String(jd).padStart(2, "0")}`.replace(
+    /\d/g,
+    (digit) => "۰۱۲۳۴۵۶۷۸۹"[Number(digit)],
+  );
+}
+
 function renderRouteOptionsModal() {
   const cars = getCarsWithSamples();
   const carMap = Object.fromEntries(cars.map((c) => [c.id, c]));
@@ -1047,10 +1093,10 @@ function renderRouteOptionsModal() {
         </div>
         <div class="modal-body">
           <div style="font-size:.85rem;color:var(--text-muted);margin-bottom:6px">
-            درخواست: <b style="color:var(--text)">${esc(pendingRequest.origin)} ← ${esc(pendingRequest.destination)}</b> — ساعت ${pendingRequest.time} — تاریخ ${toFa(isoToJalaliStr(pendingRequest.date || todayStr()))} — ${esc(pendingRequest.unit)}
+            درخواست: <b style="color:var(--text)">${esc(pendingRequest.origin)} ← ${esc(pendingRequest.destination)}</b> — ساعت ${esc(pendingRequest.time)} — تاریخ ${esc(formatRouteDate(pendingRequest.date || todayStr()))} — ${esc(pendingRequest.unit)}
           </div>
           <div style="font-size:.8rem;color:var(--text-muted);margin-bottom:14px">
-            سیستم بر اساس هم‌پوشانی مسیر، اختلاف زمانی (حداکثر ${MAX_CLUSTER_TIME_DIFF_MIN} دقیقه) و ظرفیت خالی، گزینه‌های زیر را پیشنهاد می‌دهد. انتخاب نهایی با شماست.
+            رتبه‌بندی بر اساس قابلیت ترکیب مسیر، اختلاف زمانی (حداکثر ${MAX_CLUSTER_TIME_DIFF_MIN} دقیقه) و نسبت ظرفیت اشغال‌شدهٔ همان روز است؛ انتخاب خودرو در فرم امتیاز اضافه ندارد. در تساوی، ظرفیت باقی‌مانده بیشتر و سپس شناسهٔ خودرو ملاک است. انتخاب نهایی با شماست.
           </div>
           <div class="route-options">
             ${pendingOptions
@@ -1061,13 +1107,13 @@ function renderRouteOptionsModal() {
               <div class="route-option ${i === selectedOptionIdx ? "selected" : ""}" onclick="selectRouteOption(${i})">
                 <div class="route-option-head">
                   <div class="route-option-title">
-                    ${opt.type === "cluster" ? "🔗" : "🚗"} ${opt.label}
+                    ${opt.type === "cluster" ? "🔗" : "🚗"} ${esc(opt.label)}
                   </div>
                   <span class="route-option-badge ${isBest ? "best" : "alt"}">${isBest ? "پیشنهاد برتر" : "گزینه جایگزین"}</span>
                 </div>
-                <div class="route-option-desc">${opt.desc}</div>
+                <div class="route-option-desc">${esc(opt.desc)}</div>
                 <div class="route-option-meta">
-                  <span>🚙 ${car.name} — ${car.plate}<span>📦 ${faNum(Math.max(capacityOf(car) - samples.filter((x) => x.carId === car.id && x.date === (pendingRequest.date || todayStr())).length, 0))} ظرفیت باقی‌مانده آن روز</span>
+                  <span>🚙 ${esc(car.name)} — ${esc(car.plate)}<span>📦 ${faNum(Math.max(capacityOf(car) - samples.filter((x) => x.carId === car.id && x.date === (pendingRequest.date || todayStr())).length, 0))} ظرفیت باقی‌مانده آن روز</span>
                   ${opt.type === "cluster" ? `<span>⏱ اختلاف ${opt.timeDiff} دقیقه</span>` : ""}
                   ${opt.distKm ? `<span>📏 ${opt.distKm} کیلومتر</span>` : ""}
                   ${opt.estMin ? `<span>⏳ تقریباً ${opt.estMin} دقیقه</span>` : ""}
@@ -1138,6 +1184,10 @@ function confirmRouteOption() {
 }
 
 function closeModal() {
+  if (vehicleShiftPickers) {
+    Object.values(vehicleShiftPickers).forEach((picker) => picker.destroy());
+    vehicleShiftPickers = null;
+  }
   destroyOptionMap();
   document.getElementById("modalRoot").innerHTML = "";
   pendingRequest = null;
@@ -1250,15 +1300,17 @@ function switchTab(name) {
 // ─── Clock ───
 function updateClock() {
   const now = new Date();
-  document.getElementById("clock").textContent =
-    now.toLocaleTimeString("fa-IR");
+  document.getElementById("clock").textContent = now.toLocaleTimeString(
+    "fa-IR",
+    { timeZone: "Asia/Tehran", hour12: false },
+  );
   const d = document.getElementById("todayDate");
   if (d)
-    d.textContent = now.toLocaleDateString("fa-IR", {
-      weekday: "long",
-      day: "numeric",
-      month: "long",
+    d.textContent = now.toLocaleDateString("fa-IR-u-ca-persian", {
+      timeZone: "Asia/Tehran",
       year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
     });
 }
 setInterval(updateClock, 1000);
@@ -1706,6 +1758,7 @@ function renderVehicles() {
 }
 
 function openVehicleForm(vehicleId) {
+  closeModal();
   const isEdit = vehicleId != null;
   const v = isEdit
     ? vehicles.find((x) => x.id === vehicleId)
@@ -1725,6 +1778,10 @@ function openVehicleForm(vehicleId) {
         contractorName: "",
         status: "ok",
       };
+  if (!v) {
+    showToast("error", "خودرو پیدا نشد.");
+    return;
+  }
   const is24h = !v.shiftStart && !v.shiftEnd;
 
   document.getElementById("modalRoot").innerHTML = `
@@ -1741,11 +1798,11 @@ function openVehicleForm(vehicleId) {
           <div class="form-grid">
             <div class="form-group">
               <label>نام/شناسه خودرو</label>
-              <input type="text" id="vf_name" value="${v.name}" placeholder="مثلاً خودرو ۴">
+              <input type="text" id="vf_name" value="${esc(v.name)}" placeholder="مثلاً خودرو ۴">
             </div>
             <div class="form-group">
               <label>پلاک</label>
-              <input type="text" id="vf_plate" value="${v.plate}" placeholder="مثلاً ۱۲۳-د">
+              <input type="text" id="vf_plate" value="${esc(v.plate)}" placeholder="مثلاً ۱۲۳-د">
             </div>
 
             <div class="form-group">
@@ -1799,11 +1856,11 @@ function openVehicleForm(vehicleId) {
             </div>
             <div class="form-group" id="vf_shiftStartWrap" style="display:${is24h ? "none" : "flex"}">
               <label>شروع شیفت کاری</label>
-              <input type="time" id="vf_shiftStart" value="${v.shiftStart || "07:00"}">
+              <input type="text" id="vf_shiftStart" inputmode="numeric" autocomplete="off" dir="ltr" data-picker="time" value="${esc(v.shiftStart || "07:00")}">
             </div>
             <div class="form-group" id="vf_shiftEndWrap" style="display:${is24h ? "none" : "flex"}">
               <label>پایان شیفت کاری</label>
-              <input type="time" id="vf_shiftEnd" value="${v.shiftEnd || "16:00"}">
+              <input type="text" id="vf_shiftEnd" inputmode="numeric" autocomplete="off" dir="ltr" data-picker="time" value="${esc(v.shiftEnd || "16:00")}">
             </div>
 
             <div class="form-group">
@@ -1830,7 +1887,7 @@ function openVehicleForm(vehicleId) {
             </div>
             <div class="form-group full" id="vf_contractorWrap" style="display:${v.ownership === "contractor" ? "flex" : "none"}">
               <label>نام شرکت طرف قرارداد</label>
-              <input type="text" id="vf_contractorName" value="${v.contractorName || ""}" placeholder="مثلاً شرکت حمل‌ونقل ایران‌پیک">
+              <input type="text" id="vf_contractorName" value="${esc(v.contractorName || "")}" placeholder="مثلاً شرکت حمل‌ونقل ایران‌پیک">
             </div>
           </div>
         </div>
@@ -1844,7 +1901,22 @@ function openVehicleForm(vehicleId) {
       </div>
     </div>`;
 
+  vehicleShiftPickers = {
+    start: Pickers.createTimePicker({
+      input: document.getElementById("vf_shiftStart"),
+      locale: persianLocale,
+    }),
+    end: Pickers.createTimePicker({
+      input: document.getElementById("vf_shiftEnd"),
+      locale: persianLocale,
+    }),
+  };
+  const startParts = (v.shiftStart || "07:00").split(":").map(Number);
+  const endParts = (v.shiftEnd || "16:00").split(":").map(Number);
+  vehicleShiftPickers.start.setValue(startParts[0], startParts[1]);
+  vehicleShiftPickers.end.setValue(endParts[0], endParts[1]);
   toggleCapacityFields();
+  toggleShiftFields();
 }
 
 function toggleCapacityFields() {
@@ -1864,6 +1936,10 @@ function toggleFridgeField() {
 
 function toggleShiftFields() {
   const is24h = document.getElementById("vf_is24h").checked;
+  if (vehicleShiftPickers)
+    Object.values(vehicleShiftPickers).forEach((picker) =>
+      picker.setDisabled(is24h),
+    );
   document.getElementById("vf_shiftStartWrap").style.display = is24h
     ? "none"
     : "flex";
@@ -1882,12 +1958,29 @@ function saveVehicleForm(vehicleId) {
   const name = document.getElementById("vf_name").value.trim();
   const plate = document.getElementById("vf_plate").value.trim();
   if (!name || !plate) {
-    alert("لطفاً نام و پلاک خودرو را وارد کنید.");
+    showToast("error", "لطفاً نام و پلاک خودرو را وارد کنید.");
     return;
   }
 
   const is24h = document.getElementById("vf_is24h").checked;
   const hasFridge = document.getElementById("vf_hasFridge").checked;
+  const startValue = is24h ? null : vehicleShiftPickers?.start.getValue();
+  const endValue = is24h ? null : vehicleShiftPickers?.end.getValue();
+  if (!is24h && (!startValue || !endValue)) {
+    showToast("error", "شروع و پایان شیفت را با ساعت معتبر وارد کنید.");
+    return;
+  }
+  const formatShift = (value) =>
+    `${String(value.h).padStart(2, "0")}:${String(value.m).padStart(2, "0")}`;
+  const shiftStart = is24h ? null : formatShift(startValue);
+  const shiftEnd = is24h ? null : formatShift(endValue);
+  if (!is24h && shiftStart === shiftEnd) {
+    showToast(
+      "error",
+      "شروع و پایان شیفت یکسان است؛ برای فعالیت تمام‌روز گزینهٔ ۲۴ ساعته را فعال کنید.",
+    );
+    return;
+  }
 
   const data = {
     name,
@@ -1902,8 +1995,8 @@ function saveVehicleForm(vehicleId) {
     fridgeCapacity: hasFridge
       ? parseInt(document.getElementById("vf_fridgeCapacity").value) || 0
       : 0,
-    shiftStart: is24h ? null : document.getElementById("vf_shiftStart").value,
-    shiftEnd: is24h ? null : document.getElementById("vf_shiftEnd").value,
+    shiftStart,
+    shiftEnd,
     status: document.getElementById("vf_status").value,
     ownership: document.getElementById("vf_ownership").value,
     contractorName:
@@ -2023,20 +2116,21 @@ function jalCal(jy) {
 }
 function g2d(gy, gm, gd) {
   let d =
-    div((gy + div(gm - 8, 6) - 1001001) * 1461, 4) +
+    div((gy + div(gm - 8, 6) + 100100) * 1461, 4) +
     div(153 * mod(gm + 9, 12) + 2, 5) +
     gd -
     34840408;
-  d = d - div(div(gy + 1001001 + div(gm - 8, 6), 100) * 3, 4) + 752;
+  d = d - div(div(gy + 100100 + div(gm - 8, 6), 100) * 3, 4) + 752;
   return d;
 }
+
 function d2g(jdn) {
   let j = 4 * jdn + 139361631;
-  j = j + div(div(4 * jdn + 183187720, 146097) * 3, 4) * 4 - 390847808;
+  j = j + div(div(4 * jdn + 183187720, 146097) * 3, 4) * 4 - 3908;
   const i = div(mod(j, 1461), 4) * 5 + 308;
   const gd = div(mod(i, 153), 5) + 1;
   const gm = mod(div(i, 153), 12) + 1;
-  const gy = div(j, 1461) - 1001001 + div(8 - gm, 6);
+  const gy = div(j, 1461) - 100100 + div(8 - gm, 6);
   return { gy, gm, gd };
 }
 function j2d(jy, jm, jd) {
@@ -2062,8 +2156,9 @@ function d2j(jdn) {
   } else {
     jy -= 1;
     k += 179;
+    if (r.leap === 1) k += 1;
   }
-  jm = 6 + div(k, 30);
+  jm = 7 + div(k, 30);
   jd = mod(k, 30) + 1;
   return { jy, jm, jd };
 }
