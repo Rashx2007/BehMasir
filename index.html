@@ -11,7 +11,87 @@
     />
     <link rel="stylesheet" href="style.css" />
   </head>
-  <body>
+  <body data-auth="locked">
+    <main id="loginView" class="login-layout">
+      <section class="login-intro" aria-labelledby="loginIntroTitle">
+        <span class="eyebrow">به‌مسیر · نسخهٔ نمایشی محلی</span>
+        <h1 id="loginIntroTitle">ناوگان منظم.<br />مأموریت روشن.</h1>
+        <p class="intro-copy">
+          ثبت درخواست، تخصیص خودرو و پیگیری مأموریت؛ هر کاربر فقط بخش مرتبط با
+          نقش خودش را می‌بیند.
+        </p>
+        <div class="intro-steps">
+          <div><span>۰۱</span><strong>درخواست و زمان تحویل</strong></div>
+          <div><span>۰۲</span><strong>انتخاب پیشنهاد مناسب</strong></div>
+          <div><span>۰۳</span><strong>پیگیری مأموریت راننده</strong></div>
+        </div>
+        <p class="local-warning">
+          این نسخه فقط در همین مرورگر ذخیره می‌شود؛ همگام‌سازی گوشی و رایانه و
+          امنیت سمت سرور ندارد.
+        </p>
+      </section>
+      <section class="login-card" aria-labelledby="loginTitle">
+        <div class="login-card-head">
+          <span class="eyebrow">ورود به حساب</span>
+          <h2 id="loginTitle">خوش آمدید</h2>
+          <p id="loginStatus" role="status">آماده‌سازی حساب‌های محلی…</p>
+        </div>
+        <form onsubmit="loginLocal(event)" class="login-form">
+          <label for="loginUsername">نام کاربری</label
+          ><input
+            id="loginUsername"
+            type="text"
+            dir="ltr"
+            autocomplete="username"
+            autocapitalize="none"
+            spellcheck="false"
+            required
+          />
+          <label for="loginPassword">رمز عبور</label
+          ><input
+            id="loginPassword"
+            type="password"
+            dir="ltr"
+            autocomplete="current-password"
+            required
+          />
+          <p id="loginError" class="login-error" role="alert"></p>
+          <button id="loginSubmit" class="btn-primary" type="submit" disabled>
+            ورود به سامانه
+          </button>
+        </form>
+        <div class="login-theme">
+          <label for="loginTheme">ظاهر</label
+          ><select id="loginTheme" onchange="setTheme(this.value)">
+            <option value="system">پیش‌فرض دستگاه</option>
+            <option value="light">روشن</option>
+            <option value="dark">تیره</option>
+            <option value="colorful">رنگی · سبزآبی</option>
+          </select>
+        </div>
+        <details class="demo-accounts">
+          <summary>اطلاعات ورود اولیهٔ حساب‌های آزمایشی</summary>
+          <p>
+            این رمزها عمومی و فقط برای نمایش‌اند. مدیر می‌تواند آن‌ها را تغییر
+            دهد.
+          </p>
+          <div class="credential-row">
+            <b>مدیر سیستم</b><code>admin / DemoAdmin@1405</code>
+          </div>
+          <div class="credential-row">
+            <b>مسئول ناوگان</b><code>fleet / DemoFleet@1405</code>
+          </div>
+          <div class="credential-row">
+            <b>درخواست‌کننده</b><code>requester / DemoRequest@1405</code>
+          </div>
+          <div class="credential-row">
+            <b>رانندگان خودروهای ۱ تا ۸</b
+            ><code>driver1 … driver8 / DemoDriver@1405</code>
+          </div>
+        </details>
+      </section>
+    </main>
+
     <header>
       <div class="header-brand">
         <div class="brand-logo">
@@ -35,7 +115,11 @@
       </div>
 
       <nav class="header-nav">
-        <button class="tab-btn active" onclick="switchTab('dashboard')">
+        <button
+          class="tab-btn active"
+          data-tab="dashboard"
+          onclick="switchTab('dashboard')"
+        >
           <svg
             viewBox="0 0 24 24"
             fill="none"
@@ -49,7 +133,11 @@
           </svg>
           داشبورد
         </button>
-        <button class="tab-btn" onclick="switchTab('vehicles')">
+        <button
+          class="tab-btn"
+          data-tab="vehicles"
+          onclick="switchTab('vehicles')"
+        >
           <svg
             viewBox="0 0 24 24"
             fill="none"
@@ -63,7 +151,11 @@
           </svg>
           خودروها
         </button>
-        <button class="tab-btn" onclick="switchTab('requests')">
+        <button
+          class="tab-btn"
+          data-tab="requests"
+          onclick="switchTab('requests')"
+        >
           <svg
             viewBox="0 0 24 24"
             fill="none"
@@ -77,7 +169,11 @@
           </svg>
           درخواست‌ها
         </button>
-        <button class="tab-btn" onclick="switchTab('centers')">
+        <button
+          class="tab-btn"
+          data-tab="centers"
+          onclick="switchTab('centers')"
+        >
           <svg
             viewBox="0 0 24 24"
             fill="none"
@@ -89,7 +185,11 @@
           </svg>
           مراکز
         </button>
-        <button class="tab-btn" onclick="switchTab('history')">
+        <button
+          class="tab-btn"
+          data-tab="history"
+          onclick="switchTab('history')"
+        >
           <svg
             viewBox="0 0 24 24"
             fill="none"
@@ -101,6 +201,19 @@
             <polyline points="12 7 12 12 15 15" />
           </svg>
           تاریخچه
+        </button>
+        <button class="tab-btn" data-tab="units" onclick="switchTab('units')">
+          واحدها
+        </button>
+        <button class="tab-btn" data-tab="users" onclick="switchTab('users')">
+          کاربران
+        </button>
+        <button
+          class="tab-btn"
+          data-tab="missions"
+          onclick="switchTab('missions')"
+        >
+          مأموریت‌های من
         </button>
       </nav>
 
@@ -132,8 +245,16 @@
               <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
               <circle cx="12" cy="7" r="4" /></svg
           ></span>
-          مدیر سیستم
+          <span id="currentUserLabel">ورود به سامانه</span>
         </div>
+        <button
+          class="shell-action"
+          title="تنظیمات و راهنما"
+          onclick="openPreferences()"
+        >
+          تنظیمات
+        </button>
+        <button class="shell-action" onclick="logoutLocal()">خروج</button>
       </div>
     </header>
 
@@ -157,6 +278,7 @@
           <div class="vehicle-sidebar" id="vehicleSidebar"></div>
           <button
             class="btn-secondary sidebar-more"
+            data-tab="vehicles"
             onclick="switchTab('vehicles')"
           >
             مشاهده همه خودروها
@@ -215,12 +337,30 @@
               <label>خودرو</label
               ><select id="carSelect"></select>
             </div>
-           <div class="form-group"><label>تاریخ تحویل</label>
-  <input type="text" id="dateInput" inputmode="numeric" placeholder="۱۴۰۵/۰۶/۲۸" autocomplete="off" dir="ltr" style="text-align:right">
-</div>
-<div class="form-group"><label>ساعت تحویل</label>
-  <input type="text" id="timeInput" inputmode="numeric" placeholder="۰۸:۳۰" autocomplete="off" dir="ltr" style="text-align:right">
-</div>
+            <div class="form-group">
+              <label>تاریخ تحویل</label>
+              <input
+                type="text"
+                id="dateInput"
+                inputmode="numeric"
+                placeholder="سال/ماه/روز"
+                autocomplete="off"
+                dir="ltr"
+                style="text-align: right"
+              />
+            </div>
+            <div class="form-group">
+              <label>ساعت تحویل</label>
+              <input
+                type="text"
+                id="timeInput"
+                inputmode="numeric"
+                placeholder="۰۸:۳۰"
+                autocomplete="off"
+                dir="ltr"
+                style="text-align: right"
+              />
+            </div>
           </div>
           <div id="formAlert"></div>
           <button class="btn-submit" onclick="addSample()">
@@ -262,8 +402,8 @@
       <div class="vehicles-toolbar">
         <h2 class="page-title">مدیریت مراکز (مبدأ و مقصد)</h2>
         <span class="map-hint"
-          >این بخش مخصوص مدیر سیستم است؛ نام مراکز ثبت‌شده برای همه کاربران در
-          فهرست مبدأ و مقصد نمایش داده می‌شود.</span
+          >این بخش برای مدیر سیستم و مسئول ناوگان است؛ نام مراکز ثبت‌شده برای
+          همه کاربران در فهرست مبدأ و مقصد نمایش داده می‌شود.</span
         >
       </div>
       <div class="centers-layout">
@@ -347,6 +487,16 @@
       </div>
     </section>
 
+    <section id="tab-units" class="tab-panel">
+      <div id="unitsPanel"></div>
+    </section>
+    <section id="tab-users" class="tab-panel">
+      <div id="usersPanel"></div>
+    </section>
+    <section id="tab-missions" class="tab-panel">
+      <div id="missionsPanel"></div>
+    </section>
+    <div id="guideRoot" class="guide-root"></div>
     <div id="modalRoot"></div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>

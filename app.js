@@ -17,7 +17,7 @@ const STORAGE_KEY = "fleet_demo_v1";
 const defaultVehicles = [
   {
     id: 1,
-    name: "خودرو ۱",
+    name: "خودرو ۱ (سواری)",
     plate: "۱۲۳-الف",
     bodyType: "sedan",
     serviceType: "both",
@@ -33,7 +33,7 @@ const defaultVehicles = [
   },
   {
     id: 2,
-    name: "خودرو ۲",
+    name: "خودرو ۲ (سواری)",
     plate: "۴۵۶-ب",
     bodyType: "sedan",
     serviceType: "cargo",
@@ -63,6 +63,99 @@ const defaultVehicles = [
     contractorName: "",
     status: "ok",
   },
+  {
+    id: 4,
+    name: "خودرو ۴ (سواری)",
+    plate: "۴۴۴-ش",
+    bodyType: "sedan",
+    serviceType: "passenger",
+    passengerCapacity: 3,
+    cargoCapacity: 5,
+    hasFridge: false,
+    fridgeCapacity: 0,
+    shiftStart: "08:00",
+    shiftEnd: "16:00",
+    ownership: "org",
+    contractorName: "",
+    status: "ok",
+  },
+  {
+    id: 5,
+    name: "خودرو ۵ (وانت یخچالی)",
+    plate: "۵۵۵-س",
+    bodyType: "pickup_single",
+    serviceType: "both",
+    passengerCapacity: 1,
+    cargoCapacity: 5,
+    hasFridge: true,
+    fridgeCapacity: 5,
+    shiftStart: "08:00",
+    shiftEnd: "16:00",
+    ownership: "org",
+    contractorName: "",
+    status: "ok",
+  },
+  {
+    id: 6,
+    name: "خودرو ۶ (وانت دوکابین)",
+    plate: "۶۶۶-ی",
+    bodyType: "pickup_double",
+    serviceType: "both",
+    passengerCapacity: 3,
+    cargoCapacity: 5,
+    hasFridge: false,
+    fridgeCapacity: 0,
+    shiftStart: "08:00",
+    shiftEnd: "16:00",
+    ownership: "org",
+    contractorName: "",
+    status: "ok",
+  },
+  {
+    id: 7,
+    name: "خودرو ۷ (وانت یخچالی)",
+    plate: "۷۷۷-ب",
+    bodyType: "pickup_single",
+    serviceType: "both",
+    passengerCapacity: 1,
+    cargoCapacity: 5,
+    hasFridge: true,
+    fridgeCapacity: 5,
+    shiftStart: "08:00",
+    shiftEnd: "16:00",
+    ownership: "org",
+    contractorName: "",
+    status: "ok",
+  },
+  {
+    id: 8,
+    name: "خودرو ۸ (وانت دوکابین)",
+    plate: "۸۸۸-ل",
+    bodyType: "pickup_double",
+    serviceType: "cargo",
+    passengerCapacity: 0,
+    cargoCapacity: 5,
+    hasFridge: false,
+    fridgeCapacity: 0,
+    shiftStart: "08:00",
+    shiftEnd: "16:00",
+    ownership: "org",
+    contractorName: "",
+    status: "ok",
+  },
+];
+
+const defaultUnits = [
+  "امور اداری",
+  "بهداشت و درمان",
+  "واحد فنی",
+  "مرکز مدیریت بیماری‌های واگیر",
+  "آزمایشگاه مرکزی",
+  "مرکز بهداشت شهرستان",
+  "امور پشتیبانی",
+  "فناوری اطلاعات",
+  "تدارکات",
+  "اورژانس",
 ];
 
 const defaultSamples = [
@@ -213,36 +306,103 @@ const defaultCenters = [
 // ─── لایه ذخیره‌سازی (localStorage) ───
 // نکته: این لایه به‌گونه‌ای نوشته شده که بعداً جایگزینی آن با فراخوانی API واقعی
 // فقط نیاز به تغییر همین چند تابع دارد، نه کل برنامه (توابع دیگر فقط load/save را صدا می‌زنند)
+// نسخهٔ قبلی پیش از مهاجرت پشتیبان می‌شود؛ رکوردهای موجود بازنویسی نمی‌شوند.
 function loadState() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const saved = JSON.parse(raw);
-      // سازگاری با داده‌های ذخیره‌شده قبلی: نسخه‌های قدیمی هنوز «مراکز» نداشتند
-      if (!Array.isArray(saved.centers)) {
-        saved.centers = defaultCenters.map((c) => ({ ...c }));
-        saved.nextCenterId = defaultCenters.length + 1;
-      }
-      return saved;
+  const raw = localStorage.getItem(STORAGE_KEY);
+  let saved = null;
+  if (raw) {
+    try {
+      saved = JSON.parse(raw);
+    } catch {
+      localStorage.setItem(`${STORAGE_KEY}_corrupt_backup`, raw);
     }
-  } catch (e) {
-    console.warn("خطا در خواندن داده ذخیره‌شده، بازگشت به داده پیش‌فرض", e);
+    if (
+      saved &&
+      saved.schemaVersion !== 3 &&
+      !localStorage.getItem(`${STORAGE_KEY}_backup_before_v3`)
+    ) {
+      localStorage.setItem(`${STORAGE_KEY}_backup_before_v3`, raw);
+    }
   }
-  return {
-    vehicles: defaultVehicles,
-    samples: defaultSamples,
-    nextSampleId: 104,
-    nextVehicleId: 4,
-    history: defaultHistory,
-    centers: defaultCenters,
-    nextCenterId: defaultCenters.length + 1,
+  if (!saved || typeof saved !== "object" || Array.isArray(saved)) saved = {};
+  const clone = (value) => JSON.parse(JSON.stringify(value));
+  const result = {
+    ...saved,
+    schemaVersion: 3,
+    vehicles: Array.isArray(saved.vehicles)
+      ? saved.vehicles
+      : clone(defaultVehicles),
+    samples: Array.isArray(saved.samples)
+      ? saved.samples
+      : clone(defaultSamples),
+    history: Array.isArray(saved.history)
+      ? saved.history
+      : clone(defaultHistory),
+    centers: Array.isArray(saved.centers)
+      ? saved.centers
+      : clone(defaultCenters),
+    users: Array.isArray(saved.users) ? saved.users : [],
   };
+  const normalizePlate = (value) =>
+    String(value || "")
+      .replace(/[۰-۹]/g, (ch) => "۰۱۲۳۴۵۶۷۸۹".indexOf(ch))
+      .replace(/\s/g, "");
+  let next = Math.max(0, ...result.vehicles.map((v) => Number(v.id) || 0)) + 1;
+  if (saved.schemaVersion !== 3)
+    defaultVehicles.forEach((vehicle) => {
+      if (
+        result.vehicles.some(
+          (v) => normalizePlate(v.plate) === normalizePlate(vehicle.plate),
+        )
+      )
+        return;
+      const id = result.vehicles.some((v) => v.id === vehicle.id)
+        ? next++
+        : vehicle.id;
+      result.vehicles.push({ ...vehicle, id });
+      next = Math.max(next, id + 1);
+    });
+  result.units = [
+    ...new Set(
+      [
+        ...(saved.schemaVersion === 3 && Array.isArray(saved.units)
+          ? []
+          : defaultUnits),
+        ...(Array.isArray(saved.units) ? saved.units : []),
+        ...result.samples.map((x) => x.unit),
+        ...result.history.map((x) => x.unit),
+      ]
+        .filter((x) => typeof x === "string" && x.trim())
+        .map((x) => x.trim()),
+    ),
+  ];
+  result.nextVehicleId = Math.max(Number(saved.nextVehicleId) || 1, next);
+  result.nextSampleId = Math.max(
+    Number(saved.nextSampleId) || 104,
+    ...result.samples.map((x) => (Number(x.id) || 0) + 1),
+  );
+  result.nextCenterId = Math.max(
+    Number(saved.nextCenterId) || 1,
+    ...result.centers.map((x) => (Number(x.id) || 0) + 1),
+  );
+  result.nextUserId = Math.max(
+    Number(saved.nextUserId) || 1,
+    ...result.users.map((x) => (Number(x.id) || 0) + 1),
+  );
+  result.history.forEach((record) => {
+    if (!record.carId)
+      record.carId =
+        result.vehicles.find((v) => v.name === record.carName)?.id || null;
+  });
+  return result;
 }
 
 function saveState() {
   localStorage.setItem(
     STORAGE_KEY,
     JSON.stringify({
+      ...state,
+      schemaVersion: 3,
       vehicles,
       samples,
       nextSampleId,
@@ -250,19 +410,28 @@ function saveState() {
       history,
       centers,
       nextCenterId,
+      units: requesterUnits,
+      users: appUsers,
+      nextUserId,
     }),
   );
 }
 
 const state = loadState();
 let vehicles = state.vehicles;
-let samples = state.samples; // بار همه خودروها به این آرایه مشترک منتقل شد (هر نمونه carId دارد)
+let samples = state.samples;
 let nextSampleId = state.nextSampleId;
 let nextVehicleId = state.nextVehicleId;
-let centers = state.centers; // مراکز (مبدأ/مقصد) ثبت‌شده توسط ادمین
+let centers = state.centers;
 let nextCenterId = state.nextCenterId;
-samples.forEach((s) => {
-  if (!s.date) s.date = dateOffset(0);
+let requesterUnits = state.units;
+let appUsers = state.users;
+let nextUserId = state.nextUserId;
+let pendingConfirmAction = null;
+let currentUser = null;
+let sessionExpiresAt = 0;
+samples.forEach((sample) => {
+  if (!sample.date) sample.date = dateOffset(0);
 });
 const todayStr = () =>
   new Intl.DateTimeFormat("en-CA", {
@@ -272,9 +441,6 @@ const todayStr = () =>
     day: "2-digit",
   }).format(new Date());
 let history = state.history || [];
-history = history.filter(
-  (h) => (new Date() - new Date(h.date)) / 86400000 <= 7,
-);
 let historyFilter = "all";
 
 // سازگاری با کد قبلی: cars با samples تعبیه‌شده (مشتق‌شده، نه منبع اصلی داده)
@@ -396,19 +562,41 @@ function getSampleStatus(date, time) {
 
 // ─── Render ───
 function render() {
-  renderStats();
-  renderCars();
-  renderCenterSelects();
-  renderUnitList();
-  renderCarSelect();
-  renderVehicles();
-  renderVehicleSidebar();
-  renderDashboard();
-  renderRequests();
-  renderHistory();
-  renderCentersList();
-  renderCentersMap();
+  applyRoleVisibility();
+  if (!currentUser) {
+    clearProtectedContent();
+    return;
+  }
+  if (canAccess("fleet.read")) {
+    renderStats();
+    renderCars();
+    renderVehicles();
+    renderVehicleSidebar();
+    renderDashboard();
+    renderCentersList();
+    renderCentersMap();
+  } else clearFleetContent();
+  if (canAccess("requests.create")) {
+    renderCenterSelects();
+    renderUnitList();
+    renderCarSelect();
+  } else
+    ["origin", "destination", "carSelect", "unitList"].forEach((id) =>
+      document.getElementById(id)?.replaceChildren(),
+    );
+  if (allowedTabs().includes("requests")) renderRequests();
+  else document.getElementById("requestsTbody").replaceChildren();
+  if (allowedTabs().includes("history")) renderHistory();
+  else document.getElementById("historyTbody").replaceChildren();
+  renderUsersPanel();
+  renderUnitsPanel();
+  renderMissions();
   updateBell();
+  refreshGuides();
+  const unitInput = document.getElementById("unitInput");
+  unitInput.disabled = currentUser.role === "requester";
+  if (currentUser.role === "requester")
+    unitInput.value = currentUser.unit || "";
 }
 
 function renderStats() {
@@ -443,7 +631,7 @@ function renderCars() {
       <div class="car-header">
         <div class="car-title">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 5v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
-          ${car.name} — ${car.plate}
+          ${esc(car.name)} — ${esc(car.plate)}
         </div>
         <div style="display:flex;gap:6px;align-items:center">
           <span class="badge ${badgeClass(car)}">${badgeText(car)}</span>
@@ -475,7 +663,9 @@ function renderCars() {
                    const st =
                      s.status === "delivered"
                        ? "delivered"
-                       : getSampleStatus(s.date, s.time);
+                       : s.progress === "enroute"
+                         ? "active"
+                         : getSampleStatus(s.date, s.time);
                    const statusIcon =
                      st === "delivered" ? "✅" : st === "overdue" ? "⚠️" : "🕐";
                    const statusColor =
@@ -489,7 +679,7 @@ function renderCars() {
                      <span style="font-size:.8rem">${statusIcon}</span>
                      <span class="sample-route">${s.origin} ← ${s.destination}</span>
                    </div>
-                   <span class="sample-time">${s.time}</span>
+                   <span class="sample-time">${esc(s.time)}</span>
                    <button class="btn-delete" onclick="deleteSample(${s.id})" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
                    </button>
                  </li>`;
@@ -549,8 +739,8 @@ function renderVehicleSidebar() {
               : ["آماده به کار", "badge-green"];
       return `<div class="vside-card">
       <div>
-        <div class="vside-name"><span class="vside-dot" style="background:${color}"></span>${car.name}</div>
-        <div class="vside-plate">پلاک ${car.plate}</div>
+        <div class="vside-name"><span class="vside-dot" style="background:${color}"></span>${esc(car.name)}</div>
+        <div class="vside-plate">پلاک ${esc(car.plate)}</div>
         <div class="vside-tags">
           <span class="badge ${status[1]}">${status[0]}</span>
           ${car.hasFridge ? '<span class="tag tag-cold">❄️ یخچال‌دار</span>' : ""}
@@ -781,7 +971,7 @@ function renderRequests() {
   const cars = getCarsWithSamples();
   const carMap = Object.fromEntries(cars.map((c) => [c.id, c]));
   const rows = samples
-    .filter((s) => s.date >= todayStr())
+    .filter((s) => canSeeSample(s) && s.date >= todayStr())
     .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
   tbody.innerHTML =
     rows.length === 0
@@ -792,7 +982,9 @@ function renderRequests() {
             const st =
               s.status === "delivered"
                 ? "delivered"
-                : getSampleStatus(s.date, s.time);
+                : s.progress === "enroute"
+                  ? "active"
+                  : getSampleStatus(s.date, s.time);
             const stInfo = {
               delivered: ["تحویل شده", "badge-green"],
               active: ["در حال حمل", "badge-blue"],
@@ -807,12 +999,12 @@ function renderRequests() {
               : "#94a3b8";
             return `<tr>
           <td class="req-route">${esc(s.origin)} ← ${esc(s.destination)}${s.unit ? `<div class="req-unit">${esc(s.unit)}</div>` : ""}</td>
-          <td><span class="time-chip">${s.time}</span></td>
+          <td><span class="time-chip">${esc(s.time)}</span></td>
           <td><span class="badge ${stInfo[1]}">${stInfo[0]}</span></td>
           <td><span class="req-car"><span class="legend-dot" style="background:${color}"></span>${car ? car.name : "—"}</span></td>
                     <td><span class="req-actions">
-            ${s.status !== "delivered" ? `<button class="icon-btn success" title="ثبت تحویل" onclick="deliverSample(${s.id})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg></button>` : ""}
-            <button class="icon-btn danger" title="حذف" onclick="deleteSample(${s.id})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>
+            ${canDeliverSample(s) && s.status !== "delivered" ? `<button class="icon-btn success" title="ثبت تحویل" onclick="deliverSample(${s.id})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg></button>` : ""}
+            ${canDeleteSample(s) ? `<button class="icon-btn danger" title="حذف" onclick="deleteSample(${s.id})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>` : ""}
           </span></td>
         </tr>`;
           })
@@ -822,10 +1014,11 @@ function renderHistory() {
   const tbody = document.getElementById("historyTbody");
   if (!tbody) return;
   const faDate = (d) => formatRouteDate(d);
+  const visibleHistory = history.filter(canSeeSample);
   const rows =
     historyFilter === "all"
-      ? history
-      : history.filter((h) => h.date === historyFilter);
+      ? visibleHistory
+      : visibleHistory.filter((h) => h.date === historyFilter);
   tbody.innerHTML =
     rows.length === 0
       ? '<tr><td colspan="5" class="empty-state">موردی ثبت نشده</td></tr>'
@@ -835,14 +1028,14 @@ function renderHistory() {
       <td>${faDate(h.date)}</td>
       <td class="req-route">${esc(h.origin)} ← ${esc(h.destination)}${h.unit ? `<div class="req-unit">${esc(h.unit)}</div>` : ""}</td>
       <td><span class="time-chip">${h.time}</span></td>
-      <td>${h.carName}</td>
+      <td>${esc(h.carName)}</td>
       <td><span class="badge badge-green">تحویل شده</span></td>
     </tr>`,
           )
           .join("");
   const sel = document.getElementById("historyFilter");
   if (sel) {
-    const dates = [...new Set(history.map((h) => h.date))];
+    const dates = [...new Set(visibleHistory.map((h) => h.date))];
     sel.innerHTML =
       `<option value="all">همه روزها</option>` +
       dates
@@ -861,7 +1054,10 @@ function applyHistoryFilter() {
 // ─── Actions ───
 function deleteSample(sampleId) {
   const idx = samples.findIndex((s) => s.id === sampleId);
-  if (idx === -1) return;
+  if (idx === -1 || !canDeleteSample(samples[idx])) {
+    showToast("error", "اجازهٔ حذف این درخواست را ندارید.");
+    return;
+  }
   samples.splice(idx, 1);
   saveState();
   render();
@@ -869,13 +1065,21 @@ function deleteSample(sampleId) {
 
 function deliverSample(sampleId) {
   const s = samples.find((x) => x.id === sampleId);
-  if (!s) return;
+  if (!s || !canDeliverSample(s) || s.status === "delivered") {
+    showToast("error", "این مأموریت قابل ثبت تحویل نیست.");
+    return;
+  }
   s.status = "delivered";
+  s.progress = "delivered";
+  s.deliveredAt = new Date().toISOString();
   const car = getCarsWithSamples().find((c) => c.id === s.carId);
   history.unshift({
     id: Date.now(),
     date: todayStr(),
     carId: s.carId,
+    requesterUserId: s.requesterUserId || null,
+    sampleId: s.id,
+    deliveredAt: s.deliveredAt,
     carName: car ? car.name : "—",
     unit: s.unit,
     origin: s.origin,
@@ -887,10 +1091,14 @@ function deliverSample(sampleId) {
 }
 
 function addSample() {
+  if (!requireAccess("requests.create")) return;
   const origin = document.getElementById("origin").value;
   const destination = document.getElementById("destination").value;
   const carId = parseInt(document.getElementById("carSelect").value);
-  const unit = document.getElementById("unitInput").value.trim();
+  const unit =
+    currentUser.role === "requester"
+      ? currentUser.unit
+      : document.getElementById("unitInput").value.trim();
   // مقادیر ISO/HMS که picker مستقیماً در dataset ذخیره کرده است
   // مقدار فعلی فیلد ملاک است تا dataset قدیمی پس از پاک‌کردن فرم ثبت نشود.
   const pickedTime = window._timePicker?.getValue();
@@ -1037,8 +1245,36 @@ let pendingOptions = [];
 let selectedOptionIdx = 0;
 
 function openRouteOptionsModal(request) {
+  if (!requireAccess("requests.create")) return;
   destroyOptionMap();
-  pendingRequest = request;
+  const requestedDate = new Date(`${request.date}T00:00:00Z`);
+  if (
+    !request.unit ||
+    String(request.unit).trim().length > 100 ||
+    !Number.isFinite(requestedDate.getTime()) ||
+    requestedDate.toISOString().slice(0, 10) !== request.date
+  ) {
+    showToast("error", "واحد یا تاریخ درخواست معتبر نیست.");
+    return;
+  }
+  if (
+    !centers.some((c) => c.name === request.origin) ||
+    !centers.some((c) => c.name === request.destination) ||
+    request.origin === request.destination ||
+    !/^\d{2}:\d{2}$/.test(request.time) ||
+    +request.time.slice(0, 2) > 23 ||
+    +request.time.slice(3) > 59 ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(request.date) ||
+    request.date < todayStr()
+  ) {
+    showToast("error", "مبدأ، مقصد، تاریخ یا ساعت درخواست معتبر نیست.");
+    return;
+  }
+  pendingRequest = {
+    ...request,
+    unit: currentUser.role === "requester" ? currentUser.unit : request.unit,
+    requesterUserId: currentUser.id,
+  };
   pendingOptions = buildRouteOptions(request);
   selectedOptionIdx = 0;
 
@@ -1144,6 +1380,7 @@ function renderRouteOptionsModal() {
 }
 
 function selectRouteOption(i) {
+  if (!requireAccess("requests.create")) return;
   selectedOptionIdx = i;
   // بدون بازسازی کل مودال، تا نقشه و اسکرول حفظ شود
   document
@@ -1153,7 +1390,30 @@ function selectRouteOption(i) {
 }
 
 function confirmRouteOption() {
+  if (!requireAccess("requests.create")) return;
   const opt = pendingOptions[selectedOptionIdx];
+  if (
+    !pendingRequest ||
+    !opt ||
+    !buildRouteOptions(pendingRequest).some(
+      (item) => item.carId === opt.carId && item.type === opt.type,
+    )
+  ) {
+    showToast(
+      "error",
+      "وضعیت خودرو تغییر کرده است؛ پیشنهادها را دوباره بررسی کنید.",
+    );
+    return;
+  }
+  if (
+    currentUser.role === "requester" &&
+    pendingRequest.requesterUserId !== currentUser.id
+  )
+    return;
+  if (!rememberUnit(pendingRequest.unit)) {
+    showToast("error", "نام واحد معتبر نیست.");
+    return;
+  }
   const newSample = {
     id: nextSampleId++,
     carId: opt.carId,
@@ -1163,6 +1423,8 @@ function confirmRouteOption() {
     time: pendingRequest.time,
     date: pendingRequest.date || todayStr(),
     status: "pending",
+    progress: "scheduled",
+    requesterUserId: currentUser.id,
   };
   samples.push(newSample);
   saveState();
@@ -1184,6 +1446,7 @@ function confirmRouteOption() {
 }
 
 function closeModal() {
+  pendingConfirmAction = null;
   if (vehicleShiftPickers) {
     Object.values(vehicleShiftPickers).forEach((picker) => picker.destroy());
     vehicleShiftPickers = null;
@@ -1196,53 +1459,59 @@ function closeModal() {
 
 // ─── مدیریت بحران خودرو ───
 function handleCarEmergency(carId) {
-  const cars = getCarsWithSamples();
-  const brokenCar = cars.find((c) => c.id === carId);
-  if (!brokenCar || brokenCar.samples.length === 0) {
-    alert("این خودرو نمونه‌ای برای انتقال ندارد.");
-    return;
-  }
-
-  if (
-    !confirm(
-      `آیا می‌خواهید نمونه‌های ${brokenCar.name} را به خودروهای دیگر منتقل کنید؟`,
-    )
-  )
-    return;
-
-  const samplesToMove = [...brokenCar.samples];
-  const availableCars = cars.filter(
-    (c) =>
-      c.id !== carId && c.status === "ok" && c.samples.length < capacityOf(c),
+  if (!requireAccess("fleet.write")) return;
+  const vehicle = vehicles.find((v) => v.id === carId);
+  const pending = samples.filter(
+    (s) => s.carId === carId && s.status !== "delivered",
   );
-
-  if (availableCars.length === 0) {
-    alert("⚠️ هیچ خودروی دیگری ظرفیت خالی ندارد!");
+  if (!vehicle || !pending.length) {
+    showToast("error", "مأموریت بازی برای انتقال وجود ندارد.");
     return;
   }
-
-  let moved = 0;
-  const log = [];
-
-  for (const sample of samplesToMove) {
-    // خودرو با بیشترین ظرفیت خالی
-    availableCars.sort((a, b) => a.samples.length - b.samples.length);
-    const target = availableCars.find((c) => c.samples.length < capacityOf(c));
-    if (!target) break;
-    const realSample = samples.find((s) => s.id === sample.id);
-    realSample.carId = target.id;
-    target.samples.push(realSample); // برای محاسبه ظرفیت در همین حلقه
-    log.push(`→ ${target.name}`);
-    moved++;
-  }
-
-  saveState();
-  alert(`✅ ${moved} نمونه منتقل شد:\n${log.join("\n")}`);
-  render();
+  openLocalConfirm(
+    "انتقال مأموریت‌ها",
+    `مأموریت‌های باز خودرو «${vehicle.name}» با کنترل ظرفیت و شیفت به خودروهای دیگر منتقل شوند؟`,
+    () => {
+      if (!requireAccess("fleet.write")) return;
+      let moved = 0;
+      pending.forEach((sample) => {
+        const target = vehicles
+          .filter(
+            (v) =>
+              v.id !== carId &&
+              v.status === "ok" &&
+              isWithinShift(v, sample.time) &&
+              samples.filter((s) => s.carId === v.id && s.date === sample.date)
+                .length < capacityOf(v),
+          )
+          .sort(
+            (a, b) =>
+              samples.filter((s) => s.carId === a.id && s.date === sample.date)
+                .length /
+                capacityOf(a) -
+              samples.filter((s) => s.carId === b.id && s.date === sample.date)
+                .length /
+                capacityOf(b),
+          )[0];
+        if (target) {
+          sample.carId = target.id;
+          moved++;
+        }
+      });
+      saveState();
+      closeModal();
+      render();
+      showToast(
+        moved === pending.length ? "success" : "warning",
+        `${faNum(moved)} از ${faNum(pending.length)} مأموریت منتقل شد.`,
+      );
+    },
+  );
 }
 
 // ─── اعلان‌ها ───
 function getAlerts() {
+  if (!canAccess("fleet.read")) return [];
   const alerts = [];
   samples.forEach((s) => {
     if (
@@ -1263,6 +1532,11 @@ function getAlerts() {
   return alerts;
 }
 function updateBell() {
+  if (!canAccess("fleet.read")) {
+    const badge = document.getElementById("bellBadge");
+    if (badge) badge.style.display = "none";
+    return;
+  }
   const badge = document.getElementById("bellBadge");
   if (!badge) return;
   const n = getAlerts().length;
@@ -1270,6 +1544,7 @@ function updateBell() {
   badge.textContent = n.toLocaleString("fa-IR");
 }
 function openAlertsModal() {
+  if (!requireAccess("fleet.read")) return;
   const alerts = getAlerts();
   document.getElementById("modalRoot").innerHTML =
     `<div class="modal-overlay" onclick="if(event.target===this) closeModal()">
@@ -1285,16 +1560,26 @@ function openAlertsModal() {
 
 // ─── Tabs ───
 function switchTab(name) {
-  const names = ["dashboard", "vehicles", "requests", "centers", "history"];
+  if (!currentUser || !allowedTabs().includes(name)) {
+    showToast("error", "به این بخش دسترسی ندارید.");
+    return;
+  }
+  closeModal();
+  currentTab = name;
   document
-    .querySelectorAll(".tab-btn")
-    .forEach((b, i) => b.classList.toggle("active", names[i] === name));
+    .querySelectorAll(".tab-btn[data-tab]")
+    .forEach((button) =>
+      button.classList.toggle("active", button.dataset.tab === name),
+    );
   document
     .querySelectorAll(".tab-panel")
-    .forEach((p) => p.classList.remove("active"));
-  document.getElementById("tab-" + name).classList.add("active");
+    .forEach((panel) =>
+      panel.classList.toggle("active", panel.id === `tab-${name}`),
+    );
   if (name === "centers") initCentersMap();
   if (name === "vehicles") renderVehicles();
+  refreshGuides();
+  maybeShowGuide(name);
 }
 
 // ─── Clock ───
@@ -1359,11 +1644,8 @@ function renderCenterSelects() {
 function renderUnitList() {
   const el = document.getElementById("unitList");
   if (!el) return;
-  const units = new Set(
-    [...samples, ...history].map((x) => x.unit).filter(Boolean),
-  );
-  el.innerHTML = [...units]
-    .map((u) => `<option value="${esc(u)}"></option>`)
+  el.innerHTML = requesterUnits
+    .map((unit) => `<option value="${esc(unit)}"></option>`)
     .join("");
 }
 
@@ -1374,6 +1656,7 @@ let draftMarker = null;
 let draftPoint = null;
 
 function initCentersMap() {
+  if (!requireAccess("fleet.read")) return;
   const el = document.getElementById("centersMap");
   if (!el) return;
   if (typeof L === "undefined") {
@@ -1411,6 +1694,7 @@ function renderCentersMap() {
 }
 
 function setDraftPoint(lat, lng) {
+  if (!requireAccess("centers.write")) return;
   draftPoint = { lat, lng };
   if (centersMap) {
     if (draftMarker) draftMarker.setLatLng([lat, lng]);
@@ -1445,6 +1729,7 @@ function clearDraft() {
 }
 
 function saveCenter() {
+  if (!requireAccess("centers.write")) return;
   const nameEl = document.getElementById("centerName");
   const alertEl = document.getElementById("centerAlert");
   const name = nameEl.value.trim();
@@ -1516,6 +1801,7 @@ function focusCenter(id) {
 }
 
 function openCenterRenameModal(id) {
+  if (!requireAccess("centers.write")) return;
   const c = centers.find((x) => x.id === id);
   if (!c) return;
   document.getElementById("modalRoot").innerHTML = `
@@ -1542,6 +1828,7 @@ function openCenterRenameModal(id) {
 }
 
 function saveCenterRename(id) {
+  if (!requireAccess("centers.write")) return;
   const c = centers.find((x) => x.id === id);
   if (!c) return;
   const name = document.getElementById("cr_name").value.trim();
@@ -1567,23 +1854,26 @@ function saveCenterRename(id) {
 }
 
 function deleteCenter(id) {
-  const c = centers.find((x) => x.id === id);
-  if (!c) return;
-  const inUse = samples.some(
-    (s) =>
-      s.status !== "delivered" &&
-      (s.origin === c.name || s.destination === c.name),
-  );
-  if (inUse) {
-    alert(
-      "این مرکز در درخواست‌های جاری استفاده شده است. ابتدا آن درخواست‌ها را حذف یا تحویل دهید.",
-    );
+  if (!requireAccess("centers.write")) return;
+  const center = centers.find((c) => c.id === id);
+  if (!center) return;
+  if (
+    samples.some(
+      (s) =>
+        s.status !== "delivered" &&
+        (s.origin === center.name || s.destination === center.name),
+    )
+  ) {
+    showToast("error", "این مرکز در مأموریت‌های باز استفاده می‌شود.");
     return;
   }
-  if (!confirm(`آیا از حذف مرکز «${c.name}» مطمئن هستید؟`)) return;
-  centers = centers.filter((x) => x.id !== id);
-  saveState();
-  render();
+  openLocalConfirm("حذف مرکز", `مرکز «${center.name}» حذف شود؟`, () => {
+    if (!requireAccess("centers.write")) return;
+    centers = centers.filter((c) => c.id !== id);
+    saveState();
+    closeModal();
+    render();
+  });
 }
 
 // ─── نقشه سفر اشتراکی (داخل پنجره پیشنهاد مسیر) ───
@@ -1727,8 +2017,8 @@ function renderVehicles() {
     <div class="vehicle-card ${car.status !== "ok" ? "status-down" : ""}">
       <div class="vehicle-card-head">
         <div>
-          <div class="vehicle-name">${car.name}</div>
-          <div class="vehicle-plate">پلاک: ${car.plate}</div>
+          <div class="vehicle-name">${esc(car.name)}</div>
+          <div class="vehicle-plate">پلاک: ${esc(car.plate)}</div>
         </div>
         <div class="vehicle-actions">
           <button class="icon-btn" title="ویرایش" onclick="openVehicleForm(${car.id})">
@@ -1749,7 +2039,7 @@ function renderVehicles() {
         ${car.serviceType !== "cargo" ? `<div>👤 ظرفیت مسافر: <b>${car.passengerCapacity}</b> نفر</div>` : ""}
         ${car.serviceType !== "passenger" ? `<div>📦 ظرفیت بار: <b>${car.cargoCapacity}</b> واحد${car.hasFridge ? ` (از این میان ${car.fridgeCapacity} واحد یخچالی)` : ""}</div>` : ""}
         <div>🕐 ساعت فعالیت: <b>${shiftLabel}</b></div>
-        <div>🏢 مالکیت: <b>${OWNERSHIP_LABELS[car.ownership]}</b>${car.ownership === "contractor" && car.contractorName ? ` — ${car.contractorName}` : ""}</div>
+        <div>🏢 مالکیت: <b>${OWNERSHIP_LABELS[car.ownership]}</b>${car.ownership === "contractor" && car.contractorName ? ` — ${esc(car.contractorName)}` : ""}</div>
         <div>📊 وضعیت فعلی: <b>${car.samples.length}/${capacityOf(car)}</b> ظرفیت اشغال‌شده</div>
       </div>
     </div>`;
@@ -1758,6 +2048,7 @@ function renderVehicles() {
 }
 
 function openVehicleForm(vehicleId) {
+  if (!requireAccess("fleet.write")) return;
   closeModal();
   const isEdit = vehicleId != null;
   const v = isEdit
@@ -1955,6 +2246,7 @@ function toggleContractorField() {
 }
 
 function saveVehicleForm(vehicleId) {
+  if (!requireAccess("fleet.write")) return;
   const name = document.getElementById("vf_name").value.trim();
   const plate = document.getElementById("vf_plate").value.trim();
   if (!name || !plate) {
@@ -2018,21 +2310,35 @@ function saveVehicleForm(vehicleId) {
 }
 
 function deleteVehicle(vehicleId) {
-  const car = vehicles.find((v) => v.id === vehicleId);
-  const sampleCount = samples.filter((s) => s.carId === vehicleId).length;
-  if (sampleCount > 0) {
-    if (
-      !confirm(
-        `این خودرو ${sampleCount} نمونه فعال دارد. با حذف خودرو، نمونه‌های مرتبط هم حذف می‌شوند. ادامه می‌دهید؟`,
-      )
+  if (!requireAccess("fleet.write")) return;
+  const vehicle = vehicles.find((v) => v.id === vehicleId);
+  if (!vehicle) return;
+  if (
+    samples.some(
+      (item) => item.carId === vehicleId && item.status !== "delivered",
+    ) ||
+    appUsers.some(
+      (u) =>
+        u.active && u.role === "driver" && u.vehicleIds?.includes(vehicleId),
     )
-      return;
-  } else if (!confirm(`آیا از حذف «${car.name}» مطمئن هستید؟`)) return;
-
-  vehicles = vehicles.filter((v) => v.id !== vehicleId);
-  samples = samples.filter((s) => s.carId !== vehicleId);
-  saveState();
-  render();
+  ) {
+    showToast(
+      "error",
+      "خودرو مأموریت باز یا رانندهٔ فعال دارد؛ ابتدا آن‌ها را جابه‌جا کنید.",
+    );
+    return;
+  }
+  openLocalConfirm(
+    "حذف خودرو",
+    `آیا خودرو «${vehicle.name}» حذف شود؟ سوابق حفظ می‌شوند.`,
+    () => {
+      if (!requireAccess("fleet.write")) return;
+      vehicles = vehicles.filter((v) => v.id !== vehicleId);
+      saveState();
+      closeModal();
+      render();
+    },
+  );
 }
 
 // ─── ابزار تاریخ جلالی (الگوریتم استاندارد jalaali-js) ───
@@ -2123,7 +2429,6 @@ function g2d(gy, gm, gd) {
   d = d - div(div(gy + 100100 + div(gm - 8, 6), 100) * 3, 4) + 752;
   return d;
 }
-
 function d2g(jdn) {
   let j = 4 * jdn + 139361631;
   j = j + div(div(4 * jdn + 183187720, 146097) * 3, 4) * 4 - 3908;
@@ -2190,6 +2495,908 @@ const persianLocale = {
   dir: "rtl",
 };
 
+// ─── ورود و نقش‌ها: نسخهٔ نمایشی محلی؛ این لایه جای امنیت سمت سرور را نمی‌گیرد. ───
+const ROLE_LABELS = {
+  admin: "مدیر سیستم",
+  dispatcher: "مسئول ناوگان",
+  requester: "درخواست‌کننده",
+  driver: "راننده",
+};
+const ROLE_RULES = {
+  admin: {
+    tabs: [
+      "dashboard",
+      "vehicles",
+      "requests",
+      "centers",
+      "history",
+      "units",
+      "users",
+    ],
+    permissions: ["*"],
+  },
+  dispatcher: {
+    tabs: ["dashboard", "vehicles", "requests", "centers", "history", "units"],
+    permissions: [
+      "fleet.read",
+      "fleet.write",
+      "centers.write",
+      "units.write",
+      "requests.create",
+      "requests.manage",
+    ],
+  },
+  requester: {
+    tabs: ["requests", "history"],
+    permissions: ["requests.create", "requests.own"],
+  },
+  driver: { tabs: ["missions"], permissions: ["missions.write"] },
+};
+const SESSION_KEY = "fleet_demo_session_v1";
+const THEME_KEY = "fleet_demo_theme_v1";
+const PASSWORD_ITERATIONS = 120000;
+let currentTab = "dashboard";
+let missionFilter = "current";
+const shownGuides = new Set();
+
+function canAccess(permission) {
+  if (!currentUser || !currentUser.active || sessionExpiresAt <= Date.now())
+    return false;
+  const rule = ROLE_RULES[currentUser.role];
+  return (
+    !!rule &&
+    (rule.permissions.includes("*") || rule.permissions.includes(permission))
+  );
+}
+function requireAccess(permission) {
+  if (canAccess(permission)) return true;
+  showToast(
+    "error",
+    "برای این عملیات دسترسی ندارید یا نشست شما پایان یافته است.",
+  );
+  return false;
+}
+function allowedTabs() {
+  return currentUser && sessionExpiresAt > Date.now()
+    ? ROLE_RULES[currentUser.role]?.tabs || []
+    : [];
+}
+function isFleetManager() {
+  return canAccess("requests.manage");
+}
+function canSeeSample(record) {
+  if (!currentUser) return false;
+  if (isFleetManager()) return true;
+  if (currentUser.role === "requester")
+    return record.requesterUserId === currentUser.id;
+  if (currentUser.role === "driver")
+    return currentUser.vehicleIds?.includes(record.carId) || false;
+  return false;
+}
+function canDeleteSample(record) {
+  return (
+    !!record &&
+    (isFleetManager() ||
+      (canAccess("requests.own") &&
+        record.requesterUserId === currentUser.id &&
+        record.status !== "delivered" &&
+        record.progress !== "enroute"))
+  );
+}
+function canDeliverSample(record) {
+  if (!record || record.status === "delivered") return false;
+  return (
+    isFleetManager() ||
+    (canAccess("missions.write") &&
+      canSeeSample(record) &&
+      record.date <= todayStr() &&
+      record.progress === "enroute")
+  );
+}
+function clearFleetContent() {
+  [
+    "statsBar",
+    "carsGrid",
+    "vehicleSidebar",
+    "dashBoxes",
+    "vehiclesGrid",
+    "centersList",
+  ].forEach((id) => document.getElementById(id)?.replaceChildren());
+}
+function clearProtectedContent() {
+  clearFleetContent();
+  [
+    "requestsTbody",
+    "historyTbody",
+    "usersPanel",
+    "unitsPanel",
+    "missionsPanel",
+    "origin",
+    "destination",
+    "carSelect",
+    "unitList",
+  ].forEach((id) => document.getElementById(id)?.replaceChildren());
+}
+function applyRoleVisibility() {
+  const tabs = allowedTabs();
+  document.body.dataset.auth = currentUser ? "open" : "locked";
+  document.getElementById("loginView").hidden = !!currentUser;
+  document.querySelectorAll(".tab-btn[data-tab]").forEach((button) => {
+    button.hidden = !tabs.includes(button.dataset.tab);
+  });
+  document.querySelectorAll(".tab-panel").forEach((panel) => {
+    panel.hidden = !tabs.includes(panel.id.replace("tab-", ""));
+  });
+  document.querySelector(".bell-btn").hidden = !canAccess("fleet.read");
+  document.getElementById("currentUserLabel").textContent = currentUser
+    ? `${currentUser.name} · ${ROLE_LABELS[currentUser.role]}`
+    : "ورود به سامانه";
+}
+
+const bytesToHex = (buffer) =>
+  [...new Uint8Array(buffer)]
+    .map((n) => n.toString(16).padStart(2, "0"))
+    .join("");
+function hexToBytes(text) {
+  return new Uint8Array(text.match(/../g).map((x) => parseInt(x, 16)));
+}
+async function passwordDigest(password, salt) {
+  if (!crypto.subtle)
+    throw new Error(
+      "ورود به HTTPS یا localhost نیاز دارد؛ ذخیرهٔ رمز ناامن انجام نمی‌شود.",
+    );
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(password),
+    "PBKDF2",
+    false,
+    ["deriveBits"],
+  );
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: "PBKDF2",
+      hash: "SHA-256",
+      salt: hexToBytes(salt),
+      iterations: PASSWORD_ITERATIONS,
+    },
+    key,
+    256,
+  );
+  return bytesToHex(bits);
+}
+async function newPasswordRecord(password) {
+  const salt = bytesToHex(crypto.getRandomValues(new Uint8Array(16)));
+  return {
+    salt,
+    passwordHash: await passwordDigest(password, salt),
+    passwordIterations: PASSWORD_ITERATIONS,
+  };
+}
+async function verifyPassword(user, password) {
+  if (!user.salt || !user.passwordHash) return false;
+  const digest = await passwordDigest(password, user.salt);
+  if (digest.length !== user.passwordHash.length) return false;
+  let diff = 0;
+  for (let i = 0; i < digest.length; i++)
+    diff |= digest.charCodeAt(i) ^ user.passwordHash.charCodeAt(i);
+  return diff === 0;
+}
+function userPreferences(user) {
+  return (
+    user.preferences ||
+    (user.preferences = { theme: null, dismissedGuides: [] })
+  );
+}
+function writeSession() {
+  sessionStorage.setItem(
+    SESSION_KEY,
+    JSON.stringify({
+      userId: currentUser.id,
+      expiresAt: sessionExpiresAt,
+      version: currentUser.authVersion || 1,
+    }),
+  );
+}
+async function seedLocalUsers() {
+  if (appUsers.length) return;
+  const seed = [
+    {
+      username: "admin",
+      name: "مدیر نمایشی",
+      role: "admin",
+      password: "DemoAdmin@1405",
+    },
+    {
+      username: "fleet",
+      name: "مسئول ناوگان",
+      role: "dispatcher",
+      password: "DemoFleet@1405",
+    },
+    {
+      username: "requester",
+      name: "درخواست‌کنندهٔ نمایشی",
+      role: "requester",
+      unit: "امور اداری",
+      password: "DemoRequest@1405",
+    },
+  ];
+  defaultVehicles.forEach((vehicle, index) => {
+    const normalize = (v) =>
+      String(v)
+        .replace(/[۰-۹]/g, (d) => "۰۱۲۳۴۵۶۷۸۹".indexOf(d))
+        .replace(/\s/g, "");
+    const actual = vehicles.find(
+      (v) => normalize(v.plate) === normalize(vehicle.plate),
+    );
+    seed.push({
+      username: `driver${index + 1}`,
+      name: `رانندهٔ ${vehicle.name}`,
+      role: "driver",
+      vehicleIds: actual ? [actual.id] : [],
+      password: "DemoDriver@1405",
+    });
+  });
+  const created = [];
+  for (const item of seed) {
+    const { password, ...data } = item;
+    created.push({
+      ...data,
+      id: nextUserId++,
+      active: true,
+      authVersion: 1,
+      preferences: { theme: null, dismissedGuides: [] },
+      ...(await newPasswordRecord(password)),
+    });
+  }
+  appUsers = created;
+  saveState();
+}
+async function bootLocalAccess() {
+  applyTheme(localStorage.getItem(THEME_KEY) || "system");
+  try {
+    await seedLocalUsers();
+    saveState();
+    let savedSession = null;
+    try {
+      savedSession = JSON.parse(sessionStorage.getItem(SESSION_KEY) || "null");
+    } catch {
+      sessionStorage.removeItem(SESSION_KEY);
+    }
+    const user = appUsers.find(
+      (u) => u.id === savedSession?.userId && u.active,
+    );
+    if (
+      user &&
+      savedSession.expiresAt > Date.now() &&
+      savedSession.version === (user.authVersion || 1)
+    ) {
+      currentUser = user;
+      sessionExpiresAt = savedSession.expiresAt;
+      enterLocalApp();
+    } else {
+      sessionStorage.removeItem(SESSION_KEY);
+      render();
+    }
+    document.getElementById("loginSubmit").disabled = false;
+    document.getElementById("loginStatus").textContent =
+      "برای ادامه، وارد حساب محلی خود شوید.";
+  } catch (error) {
+    document.getElementById("loginStatus").textContent =
+      error.message || "آماده‌سازی ورود انجام نشد.";
+    showToast(
+      "error",
+      "ورود آماده نشد؛ فضای ذخیره‌سازی و اتصال امن را بررسی کنید.",
+    );
+  }
+}
+async function loginLocal(event) {
+  event.preventDefault();
+  const submit = document.getElementById("loginSubmit");
+  submit.disabled = true;
+  const username = document
+    .getElementById("loginUsername")
+    .value.trim()
+    .toLowerCase();
+  const password = document.getElementById("loginPassword").value;
+  try {
+    const user = appUsers.find((u) => u.active && u.username === username);
+    if (!user || !(await verifyPassword(user, password))) {
+      document.getElementById("loginError").textContent =
+        "نام کاربری یا رمز عبور درست نیست.";
+      return;
+    }
+    document.getElementById("loginError").textContent = "";
+    document.getElementById("loginPassword").value = "";
+    currentUser = user;
+    sessionExpiresAt = Date.now() + 8 * 60 * 60 * 1000;
+    writeSession();
+    shownGuides.clear();
+    enterLocalApp();
+    showToast("success", `خوش آمدید؛ نقش شما «${ROLE_LABELS[user.role]}» است.`);
+  } catch {
+    document.getElementById("loginError").textContent =
+      "ورود انجام نشد؛ ذخیره‌سازی و HTTPS را بررسی کنید.";
+  } finally {
+    submit.disabled = false;
+  }
+}
+function enterLocalApp() {
+  historyFilter = "all";
+  missionFilter = "current";
+  document.getElementById("formAlert").replaceChildren();
+  applyTheme(
+    userPreferences(currentUser).theme ||
+      localStorage.getItem(THEME_KEY) ||
+      "system",
+  );
+  currentTab = allowedTabs()[0];
+  render();
+  switchTab(currentTab);
+}
+function logoutLocal(message = "از حساب خارج شدید.") {
+  closeModal();
+  closeGuide();
+  currentUser = null;
+  sessionExpiresAt = 0;
+  sessionStorage.removeItem(SESSION_KEY);
+  document.getElementById("loginPassword").value = "";
+  document.getElementById("unitInput").value = "";
+  window._datePicker?.setValue(todayStr());
+  window._timePicker?.setValue(8, 0);
+  document.getElementById("formAlert").replaceChildren();
+  render();
+  document.getElementById("loginUsername").focus();
+  if (message) showToast("success", message);
+}
+setInterval(() => {
+  if (currentUser && sessionExpiresAt <= Date.now())
+    logoutLocal("نشست پایان یافت؛ دوباره وارد شوید.");
+}, 30000);
+window.addEventListener("storage", (event) => {
+  if (event.key !== STORAGE_KEY || !event.newValue) return;
+  try {
+    const fresh = JSON.parse(event.newValue);
+    if (fresh.schemaVersion !== 3) return;
+    const id = currentUser?.id,
+      version = currentUser?.authVersion || 1;
+    vehicles = fresh.vehicles;
+    samples = fresh.samples;
+    history = fresh.history;
+    centers = fresh.centers;
+    requesterUnits = fresh.units;
+    appUsers = fresh.users;
+    nextSampleId = fresh.nextSampleId;
+    nextVehicleId = fresh.nextVehicleId;
+    nextCenterId = fresh.nextCenterId;
+    nextUserId = fresh.nextUserId;
+    if (id) {
+      const user = appUsers.find((u) => u.id === id && u.active);
+      if (!user || version !== (user.authVersion || 1)) {
+        logoutLocal("دسترسی حساب تغییر کرد؛ دوباره وارد شوید.");
+        return;
+      }
+      currentUser = user;
+      render();
+    }
+  } catch {
+    showToast("error", "به‌روزرسانی دادهٔ تب دیگر معتبر نیست.");
+  }
+});
+
+// ─── واحدهای مستقل؛ حذف درخواست، نام واحد را از فهرست پاک نمی‌کند. ───
+function rememberUnit(name) {
+  const value = String(name || "").trim();
+  if (!value || value.length > 100) return false;
+  if (!requesterUnits.includes(value)) requesterUnits.push(value);
+  return true;
+}
+function addUnit() {
+  if (!requireAccess("units.write")) return;
+  if (!rememberUnit(document.getElementById("newUnitName").value)) {
+    showToast("error", "نام واحد را با حداکثر ۱۰۰ نویسه وارد کنید.");
+    return;
+  }
+  saveState();
+  renderUnitList();
+  renderUnitsPanel();
+  showToast("success", "واحد در دادهٔ محلی ذخیره شد.");
+}
+function removeUnit(index) {
+  if (!requireAccess("units.write")) return;
+  const unit = requesterUnits[index];
+  if (!unit) return;
+  if (
+    [...samples, ...history].some((r) => r.unit === unit) ||
+    appUsers.some((u) => u.unit === unit)
+  ) {
+    showToast(
+      "error",
+      "واحد در درخواست، سابقه یا حساب کاربری استفاده شده است.",
+    );
+    return;
+  }
+  openLocalConfirm("حذف واحد", `واحد «${unit}» از فهرست حذف شود؟`, () => {
+    if (!requireAccess("units.write")) return;
+    requesterUnits = requesterUnits.filter((v) => v !== unit);
+    saveState();
+    closeModal();
+    render();
+  });
+}
+function renderUnitsPanel() {
+  const el = document.getElementById("unitsPanel");
+  if (!canAccess("units.write")) {
+    el.replaceChildren();
+    return;
+  }
+  el.innerHTML = `<div class="section-heading"><div><span class="eyebrow">فهرست مشترک</span><h2>واحدهای درخواست‌کننده</h2><p>واحد جدید مستقل از درخواست‌ها ذخیره می‌شود.</p></div></div>
+  <div class="management-card"><form class="inline-form" onsubmit="event.preventDefault();addUnit()"><label for="newUnitName">نام واحد جدید</label><input id="newUnitName" type="text" maxlength="100" required><button class="btn-primary" type="submit">افزودن واحد</button></form>
+  <div class="unit-grid">${requesterUnits.map((u, i) => `<div class="unit-row"><span>${esc(u)}</span><button class="quiet-button" onclick="removeUnit(${i})">حذف</button></div>`).join("")}</div></div>`;
+}
+
+// ─── مدیریت حساب‌ها فقط برای مدیر سیستم ───
+function renderUsersPanel() {
+  const el = document.getElementById("usersPanel");
+  if (!canAccess("users.write")) {
+    el.replaceChildren();
+    return;
+  }
+  el.innerHTML = `<div class="section-heading"><div><span class="eyebrow">مدیریت دسترسی محلی</span><h2>کاربران سامانه</h2><p>نقش و تخصیص خودرو، بخش‌های قابل استفاده را مشخص می‌کند.</p></div><button class="btn-primary" onclick="openUserForm(null)">افزودن کاربر</button></div>
+  <div class="management-card user-grid">${appUsers.map((u) => `<article class="account-card"><div class="account-title"><h3>${esc(u.name)}</h3><span class="badge ${u.active ? "badge-green" : "badge-red"}">${u.active ? "فعال" : "غیرفعال"}</span></div><p dir="ltr" class="username">${esc(u.username)}</p><p>${ROLE_LABELS[u.role] || "نقش نامعتبر"}</p>${u.role === "requester" ? `<p>واحد: ${esc(u.unit || "—")}</p>` : ""}${u.role === "driver" ? `<p>خودرو: ${esc((u.vehicleIds || []).map((id) => vehicles.find((v) => v.id === id)?.name || "حذف‌شده").join("، ") || "بدون تخصیص")}</p>` : ""}<button class="quiet-button" onclick="openUserForm(${u.id})">ویرایش و تغییر رمز</button></article>`).join("")}</div>`;
+}
+function openUserForm(id) {
+  if (!requireAccess("users.write")) return;
+  closeModal();
+  const u = appUsers.find((x) => x.id === id) || {
+    name: "",
+    username: "",
+    role: "requester",
+    unit: requesterUnits[0] || "",
+    vehicleIds: [],
+    active: true,
+  };
+  document.getElementById("modalRoot").innerHTML =
+    `<div class="modal-overlay"><div class="modal-box"><div class="modal-head"><h2 class="modal-title">${id ? "ویرایش کاربر" : "کاربر جدید"}</h2><button class="modal-close" aria-label="بستن" onclick="closeModal()">×</button></div>
+  <form onsubmit="event.preventDefault();saveUserForm(${id || "null"})"><div class="modal-body form-grid">
+  <div class="form-group"><label for="uf_name">نام نمایشی</label><input id="uf_name" type="text" maxlength="80" value="${esc(u.name)}" required></div>
+  <div class="form-group"><label for="uf_username">نام کاربری لاتین</label><input id="uf_username" type="text" dir="ltr" autocomplete="off" maxlength="32" value="${esc(u.username)}" required></div>
+  <div class="form-group"><label for="uf_role">نقش</label><select id="uf_role" onchange="toggleUserFields()">${Object.entries(
+    ROLE_LABELS,
+  )
+    .map(
+      ([value, label]) =>
+        `<option value="${value}" ${u.role === value ? "selected" : ""}>${label}</option>`,
+    )
+    .join("")}</select></div>
+  <div class="form-group"><label for="uf_password">${id ? "رمز جدید؛ خالی یعنی بدون تغییر" : "رمز عبور؛ حداقل ۸ نویسه"}</label><input id="uf_password" type="password" autocomplete="new-password" minlength="8" ${id ? "" : "required"}></div>
+  <div class="form-group full" id="uf_unitWrap"><label for="uf_unit">واحد درخواست‌کننده</label><select id="uf_unit">${requesterUnits.map((unit) => `<option value="${esc(unit)}" ${u.unit === unit ? "selected" : ""}>${esc(unit)}</option>`).join("")}</select></div>
+  <fieldset class="form-group full" id="uf_vehicleWrap"><legend>خودروهای تخصیص‌یافته به راننده</legend><div class="assignment-grid">${vehicles.map((v) => `<label><input type="checkbox" name="uf_vehicle" value="${v.id}" ${u.vehicleIds?.includes(v.id) ? "checked" : ""}>${esc(v.name)}</label>`).join("")}</div></fieldset>
+  <label class="checkbox-row full"><input id="uf_active" type="checkbox" ${u.active ? "checked" : ""}>حساب فعال باشد</label>
+  <p class="form-note full">این دسترسی‌ها محلی و نمایشی هستند؛ برای استفادهٔ عملیاتی، کنترل سمت سرور لازم است.</p>
+  </div><div class="modal-foot"><button type="button" class="btn-secondary" onclick="closeModal()">انصراف</button><button class="btn-primary" id="saveUserButton" type="submit">ذخیرهٔ کاربر</button></div></form></div></div>`;
+  toggleUserFields();
+}
+function toggleUserFields() {
+  const role = document.getElementById("uf_role").value;
+  document.getElementById("uf_unitWrap").hidden = role !== "requester";
+  document.getElementById("uf_vehicleWrap").hidden = role !== "driver";
+}
+async function saveUserForm(id) {
+  if (!requireAccess("users.write")) return;
+  const name = document.getElementById("uf_name").value.trim(),
+    username = document
+      .getElementById("uf_username")
+      .value.trim()
+      .toLowerCase();
+  const role = document.getElementById("uf_role").value,
+    active = document.getElementById("uf_active").checked,
+    password = document.getElementById("uf_password").value;
+  const unit =
+    role === "requester" ? document.getElementById("uf_unit").value : null;
+  const vehicleIds =
+    role === "driver"
+      ? [...document.querySelectorAll('[name="uf_vehicle"]:checked')].map(
+          (node) => Number(node.value),
+        )
+      : [];
+  if (
+    !name ||
+    !/^[a-z0-9_.-]{3,32}$/.test(username) ||
+    !ROLE_RULES[role] ||
+    appUsers.some((u) => u.username === username && u.id !== id)
+  ) {
+    showToast("error", "نام، نقش یا نام کاربری معتبر و یکتا نیست.");
+    return;
+  }
+  if ((!id || password) && password.length < 8) {
+    showToast("error", "رمز عبور باید حداقل ۸ نویسه باشد.");
+    return;
+  }
+  if (role === "requester" && !requesterUnits.includes(unit)) {
+    showToast("error", "واحد درخواست‌کننده معتبر نیست.");
+    return;
+  }
+  if (role === "driver" && !vehicleIds.length) {
+    showToast("error", "برای راننده دست‌کم یک خودرو انتخاب کنید.");
+    return;
+  }
+  if (id === currentUser.id && (!active || role !== "admin")) {
+    showToast("error", "دسترسی مدیریتی حساب فعلی را نمی‌توانید حذف کنید.");
+    return;
+  }
+  const previous = appUsers.find((u) => u.id === id);
+  if (
+    previous?.role === "admin" &&
+    (!active || role !== "admin") &&
+    !appUsers.some((u) => u.id !== id && u.role === "admin" && u.active)
+  ) {
+    showToast("error", "آخرین مدیر فعال باید حفظ شود.");
+    return;
+  }
+  const saveButton = document.getElementById("saveUserButton");
+  saveButton.disabled = true;
+  try {
+    const passwordRecord = password ? await newPasswordRecord(password) : {};
+    if (!requireAccess("users.write")) return;
+    const next = {
+      ...previous,
+      id: id || nextUserId++,
+      name,
+      username,
+      role,
+      active,
+      unit,
+      vehicleIds,
+      preferences: previous?.preferences || {
+        theme: null,
+        dismissedGuides: [],
+      },
+      authVersion: (previous?.authVersion || 0) + 1,
+      ...passwordRecord,
+    };
+    if (id) appUsers = appUsers.map((u) => (u.id === id ? next : u));
+    else appUsers.push(next);
+    if (id === currentUser.id) {
+      currentUser = next;
+      writeSession();
+    }
+    saveState();
+    closeModal();
+    render();
+    showToast("success", "حساب کاربری ذخیره شد.");
+  } catch {
+    showToast(
+      "error",
+      "ذخیرهٔ کاربر انجام نشد؛ اتصال امن و فضای ذخیره‌سازی را بررسی کنید.",
+    );
+  } finally {
+    if (saveButton.isConnected) saveButton.disabled = false;
+  }
+}
+
+// ─── راهنماهای قابل خاموش‌کردن برای هر حساب و هر بخش ───
+const SECTION_GUIDES = {
+  dashboard: [
+    "داشبورد ناوگان",
+    "خلاصهٔ خودروها و درخواست‌ها را ببینید. این داده‌ها فقط در همین مرورگر ذخیره می‌شوند.",
+  ],
+  vehicles: [
+    "مدیریت خودروها",
+    "مشخصات و شیفت را با انتخابگر یکپارچه ویرایش کنید. خودرو با مأموریت باز یا رانندهٔ فعال، پیش از حذف نیاز به جابه‌جایی تخصیص دارد.",
+  ],
+  requests: [
+    "ثبت و پیگیری درخواست",
+    "تاریخ و ساعت تحویل را مشخص کنید؛ پیشنهادها مستقل از انتخاب خودرو رتبه‌بندی می‌شوند. درخواست‌کننده فقط درخواست‌های خودش را می‌بیند.",
+  ],
+  centers: [
+    "مراکز مبدأ و مقصد",
+    "برای مرکز جدید یک نقطه و نام ثبت کنید. برای نمایش نقشه، کتابخانه و کاشی‌های آنلاین باید در دسترس باشند.",
+  ],
+  history: [
+    "سوابق مجاز",
+    "مدیر و مسئول ناوگان همهٔ سوابق را می‌بینند؛ درخواست‌کننده فقط سوابق درخواست‌های خودش را می‌بیند.",
+  ],
+  units: [
+    "واحدهای درخواست‌کننده",
+    "واحد جدید را به فهرست مستقل اضافه کنید. حذف درخواست، واحد آن را پاک نمی‌کند؛ واحد استفاده‌شده قابل حذف نیست.",
+  ],
+  users: [
+    "مدیریت حساب‌ها",
+    "برای هر کاربر نقش تعیین کنید. راننده فقط خودروهای تخصیص‌یافته را می‌بیند. حساب‌های آزمایشی برای استفادهٔ عملیاتی مناسب نیستند.",
+  ],
+  missions: [
+    "پنل راننده",
+    "جاری، رزرو آینده و انجام‌شده را جدا ببینید. ابتدا «شروع مأموریت» و سپس «ثبت تحویل» را بزنید. این دمو بین گوشی و رایانه همگام نمی‌شود.",
+  ],
+};
+function guideDismissed(tab) {
+  return (userPreferences(currentUser).dismissedGuides || []).includes(tab);
+}
+function refreshGuides() {
+  document.querySelectorAll(".guide-banner").forEach((node) => node.remove());
+  if (!currentUser) return;
+  allowedTabs().forEach((tab) => {
+    if (guideDismissed(tab)) return;
+    const info = SECTION_GUIDES[tab];
+    if (!info) return;
+    const banner = document.createElement("aside");
+    banner.className = "guide-banner";
+    banner.innerHTML = `<div><strong>${esc(info[0])}</strong><p>${esc(info[1])}</p></div><div class="guide-actions"><button onclick="showSectionGuide('${tab}')">راهنمای بخش</button><button onclick="dismissGuide('${tab}')">عدم نمایش</button></div>`;
+    document.getElementById(`tab-${tab}`).prepend(banner);
+  });
+}
+function dismissGuide(tab) {
+  if (!currentUser || !allowedTabs().includes(tab)) return;
+  const pref = userPreferences(currentUser);
+  pref.dismissedGuides = [...new Set([...(pref.dismissedGuides || []), tab])];
+  saveState();
+  refreshGuides();
+  closeGuide();
+  showToast(
+    "success",
+    "راهنمای این بخش پنهان شد؛ از تنظیمات قابل بازنمایش است.",
+  );
+}
+function maybeShowGuide(tab) {
+  if (!guideDismissed(tab) && !shownGuides.has(tab)) {
+    shownGuides.add(tab);
+    showSectionGuide(tab);
+  }
+}
+function showSectionGuide(tab = currentTab) {
+  if (!currentUser || !allowedTabs().includes(tab)) return;
+  const info = SECTION_GUIDES[tab];
+  if (!info) return;
+  document.getElementById("guideRoot").innerHTML =
+    `<div class="guide-overlay"><section class="guide-dialog" role="dialog" aria-modal="true" aria-labelledby="guideTitle"><span class="eyebrow">راهنمای ${esc(ROLE_LABELS[currentUser.role])}</span><h2 id="guideTitle">${esc(info[0])}</h2><p>${esc(info[1])}</p><label class="checkbox-row"><input id="guideDontShow" type="checkbox">این راهنما دوباره نمایش داده نشود</label><div class="guide-foot"><button class="btn-primary" onclick="finishGuide('${tab}')">متوجه شدم</button></div></section></div>`;
+  document.querySelector(".guide-foot button").focus();
+}
+function finishGuide(tab) {
+  if (document.getElementById("guideDontShow")?.checked) dismissGuide(tab);
+  else closeGuide();
+}
+function closeGuide() {
+  document.getElementById("guideRoot").replaceChildren();
+}
+function resetGuides() {
+  if (!currentUser) return;
+  userPreferences(currentUser).dismissedGuides = [];
+  shownGuides.clear();
+  saveState();
+  refreshGuides();
+  closeModal();
+  showSectionGuide(currentTab);
+}
+document.addEventListener(
+  "keydown",
+  (event) => {
+    if (
+      event.key === "Escape" &&
+      document.getElementById("guideRoot").childElementCount
+    ) {
+      event.preventDefault();
+      closeGuide();
+    }
+  },
+  true,
+);
+
+// ─── تنظیمات ظاهری و رمز شخصی ───
+function applyTheme(value) {
+  const requested = ["system", "light", "dark", "colorful"].includes(value)
+    ? value
+    : "system";
+  const resolved =
+    requested === "system"
+      ? matchMedia("(prefers-color-scheme: dark)").matches
+        ? "dark"
+        : "light"
+      : requested;
+  document.documentElement.dataset.theme = resolved;
+  document.documentElement.style.colorScheme =
+    resolved === "dark" ? "dark" : "light";
+  const select = document.getElementById("loginTheme");
+  if (select) select.value = requested;
+}
+function setTheme(value) {
+  if (!["system", "light", "dark", "colorful"].includes(value)) return;
+  localStorage.setItem(THEME_KEY, value);
+  if (currentUser) {
+    userPreferences(currentUser).theme = value;
+    saveState();
+  }
+  applyTheme(value);
+}
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+  const value = currentUser
+    ? userPreferences(currentUser).theme ||
+      localStorage.getItem(THEME_KEY) ||
+      "system"
+    : localStorage.getItem(THEME_KEY) || "system";
+  if (value === "system") applyTheme(value);
+});
+function openPreferences() {
+  if (!currentUser) return;
+  closeModal();
+  const theme =
+    userPreferences(currentUser).theme ||
+    localStorage.getItem(THEME_KEY) ||
+    "system";
+  document.getElementById("modalRoot").innerHTML =
+    `<div class="modal-overlay"><div class="modal-box"><div class="modal-head"><h2 class="modal-title">تنظیمات شخصی</h2><button class="modal-close" aria-label="بستن" onclick="closeModal()">×</button></div><div class="modal-body settings-stack">
+  <label for="profileTheme">ظاهر سامانه</label><select id="profileTheme" onchange="setTheme(this.value)">${[
+    ["system", "پیش‌فرض دستگاه"],
+    ["light", "روشن"],
+    ["dark", "تیره"],
+    ["colorful", "رنگی · سبزآبی"],
+  ]
+    .map(
+      ([v, l]) =>
+        `<option value="${v}" ${v === theme ? "selected" : ""}>${l}</option>`,
+    )
+    .join("")}</select>
+  <button class="btn-secondary" onclick="resetGuides()">بازنمایش همهٔ راهنماها</button><button class="btn-secondary" onclick="closeModal();showSectionGuide()">راهنمای بخش فعلی</button>
+  <hr><h3>تغییر رمز حساب خود</h3><form class="settings-stack" onsubmit="event.preventDefault();changeOwnPassword()"><label for="ownOldPassword">رمز فعلی</label><input type="password" id="ownOldPassword" autocomplete="current-password" required><label for="ownNewPassword">رمز جدید؛ حداقل ۸ نویسه</label><input type="password" id="ownNewPassword" autocomplete="new-password" minlength="8" required><button class="btn-primary" id="ownPasswordButton">ذخیرهٔ رمز</button></form>
+  <p class="local-warning">نسخهٔ محلی است؛ اطلاعات دستگاه دیگر و امنیت سمت سرور در این نسخه وجود ندارد.</p></div></div></div>`;
+}
+async function changeOwnPassword() {
+  if (!currentUser) return;
+  const user = currentUser,
+    oldPassword = document.getElementById("ownOldPassword").value,
+    newPassword = document.getElementById("ownNewPassword").value;
+  if (newPassword.length < 8) {
+    showToast("error", "رمز جدید کوتاه است.");
+    return;
+  }
+  const button = document.getElementById("ownPasswordButton");
+  button.disabled = true;
+  try {
+    if (!(await verifyPassword(user, oldPassword))) {
+      showToast("error", "رمز فعلی درست نیست.");
+      return;
+    }
+    const record = await newPasswordRecord(newPassword);
+    if (currentUser?.id !== user.id) return;
+    Object.assign(user, record);
+    user.authVersion = (user.authVersion || 1) + 1;
+    writeSession();
+    saveState();
+    closeModal();
+    showToast("success", "رمز حساب تغییر کرد.");
+  } catch {
+    showToast("error", "تغییر رمز انجام نشد.");
+  } finally {
+    if (button.isConnected) button.disabled = false;
+  }
+}
+
+// ─── مأموریت‌های راننده، مناسب موبایل و شامل رزروهای روزهای آینده ───
+function setMissionFilter(value) {
+  if (!["current", "future", "completed"].includes(value)) return;
+  missionFilter = value;
+  renderMissions();
+}
+function startMission(id) {
+  if (!requireAccess("missions.write")) return;
+  const sample = samples.find((s) => s.id === id);
+  if (
+    !sample ||
+    !canSeeSample(sample) ||
+    sample.status === "delivered" ||
+    sample.date > todayStr()
+  ) {
+    showToast("error", "این مأموریت اکنون قابل شروع نیست.");
+    return;
+  }
+  sample.progress = "enroute";
+  sample.status = "active";
+  sample.startedAt = new Date().toISOString();
+  saveState();
+  render();
+  showToast("success", "شروع مأموریت ثبت شد.");
+}
+function renderMissions() {
+  const el = document.getElementById("missionsPanel");
+  if (!canAccess("missions.write")) {
+    el.replaceChildren();
+    return;
+  }
+  const all = samples.filter(canSeeSample),
+    open = all.filter((s) => s.status !== "delivered" && s.date <= todayStr()),
+    future = all.filter((s) => s.status !== "delivered" && s.date > todayStr()),
+    done = all.filter((s) => s.status === "delivered");
+  const selected =
+    missionFilter === "future"
+      ? future
+      : missionFilter === "completed"
+        ? done
+        : open;
+  const rows = [...selected].sort((a, b) =>
+    (a.date + a.time).localeCompare(b.date + b.time),
+  );
+  el.innerHTML = `<div class="driver-heading"><span class="eyebrow">پنل شخصی راننده</span><h1>مأموریت‌های شما</h1><p>${esc(currentUser.name)} · ${esc(formatRouteDate(todayStr()))}</p></div>
+  <div class="mission-switch" role="group" aria-label="فیلتر مأموریت">${[
+    ["current", "جاری", open.length],
+    ["future", "رزرو آینده", future.length],
+    ["completed", "انجام‌شده", done.length],
+  ]
+    .map(
+      ([v, l, n]) =>
+        `<button class="${missionFilter === v ? "selected" : ""}" aria-pressed="${missionFilter === v}" onclick="setMissionFilter('${v}')">${l}<span>${faNum(n)}</span></button>`,
+    )
+    .join("")}</div>
+  <div class="mission-list">${
+    rows.length
+      ? rows
+          .map((s) => {
+            const car = vehicles.find((v) => v.id === s.carId),
+              reserved = s.date > todayStr(),
+              delivered = s.status === "delivered",
+              enroute = s.progress === "enroute";
+            const delayed =
+              !reserved &&
+              !delivered &&
+              !enroute &&
+              getSampleStatus(s.date, s.time) === "overdue";
+            const label = delivered
+              ? "تحویل‌شده"
+              : reserved
+                ? "رزرو"
+                : enroute
+                  ? "در مسیر"
+                  : delayed
+                    ? "با تأخیر؛ نیاز به پیگیری"
+                    : "در انتظار حرکت";
+            return `<article class="mission-card"><div class="mission-top"><span class="badge ${delivered ? "badge-green" : enroute ? "badge-blue" : delayed ? "badge-red" : "badge-amber"}">${label}</span><span class="mission-number">مأموریت ${faNum(s.id)}</span></div>
+    <div class="mission-route"><div><span>مبدأ</span><strong>${esc(s.origin)}</strong></div><div><span>مقصد</span><strong>${esc(s.destination)}</strong></div></div>
+    <div class="mission-details"><span>تاریخ <b>${esc(formatRouteDate(s.date))}</b></span><span>ساعت <b dir="ltr">${esc(s.time.replace(/\d/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[Number(d)]))}</b></span><span>خودرو <b>${esc(car?.name || "حذف‌شده")}</b></span><span>واحد <b>${esc(s.unit || "—")}</b></span></div>
+    ${!delivered && !reserved ? `<div class="mission-actions">${enroute ? `<button class="btn-primary" onclick="confirmMissionDelivery(${s.id})">ثبت تحویل</button>` : `<button class="btn-primary" onclick="startMission(${s.id})">شروع مأموریت</button>`}<button class="btn-secondary" onclick="showMissionDetails(${s.id})">جزئیات</button></div>` : `<button class="quiet-button" onclick="showMissionDetails(${s.id})">جزئیات مأموریت</button>`}</article>`;
+          })
+          .join("")
+      : `<div class="driver-empty"><h2>مأموریتی در این بخش ندارید</h2><p>رزروهای روزهای بعد را در «رزرو آینده» ببینید. داده‌های گوشی و رایانه در این نسخه مشترک نیستند.</p></div>`
+  }</div>`;
+}
+function showMissionDetails(id) {
+  const sample = samples.find((s) => s.id === id);
+  if (!requireAccess("missions.write") || !sample || !canSeeSample(sample))
+    return;
+  closeModal();
+  document.getElementById("modalRoot").innerHTML =
+    `<div class="modal-overlay"><section class="modal-box"><div class="modal-head"><h2 class="modal-title">جزئیات مأموریت ${faNum(id)}</h2><button class="modal-close" aria-label="بستن" onclick="closeModal()">×</button></div><div class="modal-body settings-stack"><p>مبدأ: <b>${esc(sample.origin)}</b></p><p>مقصد: <b>${esc(sample.destination)}</b></p><p>تاریخ: ${esc(formatRouteDate(sample.date))} · ساعت: ${esc(sample.time)}</p><p>واحد: ${esc(sample.unit)}</p><p class="local-warning">مسیر خیابانی، موقعیت زنده و اعلان گوشی در این نسخه پیاده نشده‌اند.</p></div></section></div>`;
+}
+function confirmMissionDelivery(id) {
+  const sample = samples.find((s) => s.id === id);
+  if (!sample || !canDeliverSample(sample)) {
+    showToast("error", "این مأموریت قابل تحویل نیست.");
+    return;
+  }
+  openLocalConfirm(
+    "تأیید تحویل",
+    `تحویل مأموریت «${sample.origin} ← ${sample.destination}» ثبت شود؟`,
+    () => {
+      deliverSample(id);
+      closeModal();
+      showToast("success", "تحویل ثبت شد.");
+    },
+  );
+}
+function openLocalConfirm(title, message, action) {
+  if (!currentUser) return;
+  closeModal();
+  pendingConfirmAction = action;
+  document.getElementById("modalRoot").innerHTML =
+    `<div class="modal-overlay"><section class="modal-box" style="max-width:480px"><div class="modal-head"><h2 class="modal-title">${esc(title)}</h2><button class="modal-close" aria-label="بستن" onclick="closeModal()">×</button></div><div class="modal-body"><p>${esc(message)}</p></div><div class="modal-foot"><button class="btn-secondary" onclick="closeModal()">انصراف</button><button class="btn-primary" onclick="confirmLocalAction()">تأیید</button></div></section></div>`;
+}
+function confirmLocalAction() {
+  const action = pendingConfirmAction;
+  pendingConfirmAction = null;
+  if (currentUser && action) action();
+}
+
+setInterval(() => {
+  if (canAccess("missions.write")) renderMissions();
+}, 60000);
+
 // ─── mount کردن picker ها روی input های موجود ───
 const dateInput = document.getElementById("dateInput");
 const timeInput = document.getElementById("timeInput");
@@ -2221,4 +3428,4 @@ if (timeInput) {
   window._timePicker = tp;
 }
 
-render();
+bootLocalAccess();
