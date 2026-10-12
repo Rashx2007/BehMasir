@@ -50,8 +50,10 @@
         top &&
         !top.el.contains(event.target) &&
         !top.anchor.contains(event.target)
-      )
+      ) {
+        event.pickerDismissed = true;
         popPopup(top.el);
+      }
     },
     true,
   );
@@ -794,5 +796,12 @@
       },
     };
   }
-  window.Pickers = { createDatePicker, createTimePicker };
+  window.Pickers = {
+    createDatePicker,
+    createTimePicker,
+    hasOpenPopup: () => POPUP_STACK.length > 0,
+    closeAll: () => {
+      while (POPUP_STACK.length) popPopup();
+    },
+  };
 })();

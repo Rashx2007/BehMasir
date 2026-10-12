@@ -2839,3 +2839,383 @@ button:disabled {
 .unit-row > span {
   min-width: 0;
 }
+
+/* ─── راهنما، تنظیمات تب‌دار و کنترل‌های مشترک ─── */
+.guide-banner p,
+.guide-dialog > p {
+  white-space: pre-line;
+}
+.guide-dialog {
+  position: relative;
+}
+.guide-close {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+}
+.guide-dialog > .eyebrow,
+.guide-dialog > h2 {
+  padding-left: 40px;
+}
+.modal-close-help {
+  padding: 16px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+  border-inline-start: 3px solid var(--primary);
+  border-radius: 8px;
+  background: var(--soft-accent);
+  font-size: 14px;
+  line-height: 1.7;
+}
+.modal-close-help strong {
+  display: block;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.modal-close-help p,
+.modal-close-help small {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+.modal-close-help .checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  margin: 8px 0 4px;
+}
+.modal-close-help small {
+  display: block;
+}
+.settings-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 24px;
+}
+.settings-tabs button {
+  min-height: 48px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+}
+.settings-tabs button[aria-selected="true"] {
+  background: var(--soft-accent);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.settings-panel h3 {
+  font-size: 20px;
+}
+.settings-note {
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1.7;
+}
+.theme-choices {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+.theme-choice {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 20px 12px;
+  min-height: 122px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--text);
+  font-size: 16px;
+  cursor: pointer;
+}
+.theme-choice[aria-pressed="true"] {
+  border-color: var(--primary);
+  background: var(--soft-accent);
+}
+.theme-selected {
+  display: none;
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  color: var(--primary);
+  font-weight: 700;
+}
+.theme-choice[aria-pressed="true"] .theme-selected {
+  display: block;
+}
+.theme-preview {
+  display: block;
+  width: 80px;
+  height: 42px;
+  border: 1px solid #94a3b8;
+  border-inline-start: 14px solid #2563eb;
+  border-radius: 6px;
+  background: #f1f5f9;
+}
+.theme-preview-dark {
+  border-color: #64748b;
+  border-inline-start-color: #93c5fd;
+  background: #192535;
+}
+.theme-preview-colorful {
+  border-color: #659c97;
+  border-inline-start-color: #007a72;
+  background: #edf8f6;
+}
+.theme-preview-system {
+  background: linear-gradient(90deg, #f1f5f9 50%, #192535 50%);
+}
+.password-control {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+.password-control input {
+  width: 100%;
+  min-height: 48px;
+  padding-left: 56px !important;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--bg);
+  font: inherit;
+}
+.password-toggle {
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.password-toggle:hover,
+.password-toggle[aria-pressed="true"] {
+  background: var(--soft-accent);
+  color: var(--primary);
+}
+.password-toggle svg {
+  width: 22px;
+  height: 22px;
+}
+.driver-heading {
+  text-align: center;
+}
+.driver-plates {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+.driver-plates > span {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  background: var(--card);
+  color: var(--text-muted);
+}
+.driver-plates b {
+  color: var(--text);
+}
+.mission-switch button {
+  white-space: normal;
+  line-height: 1.7;
+  padding: 12px 8px;
+}
+.mission-switch button span {
+  display: block;
+  margin: 4px 0 0;
+}
+.icon-btn[aria-disabled="true"] {
+  color: var(--text-muted);
+  background: var(--bg);
+  cursor: not-allowed;
+}
+/* پیام‌های معنایی، قابل بستن و خوانا در همهٔ تم‌ها */
+#toastRoot {
+  bottom: 24px;
+  z-index: 5000;
+  width: min(460px, calc(100vw - 32px));
+  pointer-events: none;
+}
+#toastRoot .toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-inline-start: 4px solid currentColor;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.12);
+  pointer-events: auto;
+}
+#toastRoot .toast-success {
+  background: var(--success-surface);
+  color: var(--success);
+}
+#toastRoot .toast-error {
+  background: var(--danger-surface);
+  color: var(--danger);
+}
+#toastRoot .toast-warning {
+  background: var(--warning-surface);
+  color: var(--warning);
+}
+#toastRoot .toast-info {
+  background: var(--soft-accent);
+  color: var(--primary);
+}
+.toast-symbol {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  font-size: 18px;
+}
+.toast-copy {
+  flex: 1;
+  min-width: 0;
+}
+.toast-copy strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 16px;
+}
+.toast-copy p {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.8;
+}
+.toast-close {
+  flex-shrink: 0;
+  min-width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 8px;
+  color: inherit;
+  background: transparent;
+  font-size: 24px;
+  cursor: pointer;
+  margin: -8px 0 0 -8px;
+}
+.alert {
+  border-inline-start: 4px solid currentColor;
+  border-radius: 8px;
+  padding: 14px 16px;
+  gap: 12px;
+  align-items: center;
+  font-size: 14px;
+  line-height: 1.8;
+}
+.alert > span:first-child {
+  display: flex;
+  flex-shrink: 0;
+}
+.app-tooltip,
+.leaflet-tooltip {
+  direction: rtl;
+  text-align: right;
+  font-family: "Vazirmatn", Tahoma, sans-serif;
+  font-size: 14px;
+  line-height: 1.7;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  background: var(--card);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+.app-tooltip {
+  position: fixed;
+  z-index: 6000;
+  max-width: min(320px, calc(100vw - 16px));
+  width: max-content;
+  pointer-events: none;
+  border-inline-start: 3px solid var(--primary);
+  overflow-wrap: anywhere;
+}
+.app-tooltip[data-kind="danger"] {
+  color: var(--danger);
+  background: var(--danger-surface);
+  border-inline-start-color: var(--danger);
+}
+.app-tooltip[data-kind="warning"] {
+  color: var(--warning);
+  background: var(--warning-surface);
+  border-inline-start-color: var(--warning);
+}
+@media (max-width: 700px) {
+  .mission-switch button {
+    min-height: 102px;
+    font-size: 14px;
+  }
+  .modal-close-help {
+    padding: 12px;
+  }
+  .settings-tabs {
+    gap: 6px;
+  }
+  .settings-tabs button {
+    padding: 8px 6px;
+  }
+  #toastRoot {
+    bottom: 16px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast,
+  .modal-overlay,
+  .guide-overlay,
+  .app-tooltip {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* خوانایی راهنما روی سطح رنگی و حفظ ترتیب اجزای پلاک */
+.guide-banner p,
+.guide-dialog > p,
+.modal-close-help p,
+.modal-close-help small {
+  color: var(--text);
+}
+.plate-value {
+  display: inline-block;
+  unicode-bidi: isolate;
+}
+.app-tooltip {
+  pointer-events: auto;
+}
+
+input[type="checkbox"] {
+  accent-color: var(--primary);
+}
+
+.leaflet-container .leaflet-control-zoom a {
+  width: 44px;
+  height: 44px;
+  line-height: 44px;
+}

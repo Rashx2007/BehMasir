@@ -9,32 +9,23 @@
       rel="stylesheet"
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
     />
-    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="style.css?v=14050721" />
   </head>
   <body data-auth="locked">
     <main id="loginView" class="login-layout">
       <section class="login-intro" aria-labelledby="loginIntroTitle">
-        <span class="eyebrow">به‌مسیر · نسخهٔ نمایشی محلی</span>
-        <h1 id="loginIntroTitle">ناوگان منظم.<br />مأموریت روشن.</h1>
-        <p class="intro-copy">
-          ثبت درخواست، تخصیص خودرو و پیگیری مأموریت؛ هر کاربر فقط بخش مرتبط با
-          نقش خودش را می‌بیند.
-        </p>
+        <h1 id="loginIntroTitle">سامانه مدیریت ناوگان خودروها</h1>
         <div class="intro-steps">
           <div><span>۰۱</span><strong>درخواست و زمان تحویل</strong></div>
           <div><span>۰۲</span><strong>انتخاب پیشنهاد مناسب</strong></div>
           <div><span>۰۳</span><strong>پیگیری مأموریت راننده</strong></div>
         </div>
-        <p class="local-warning">
-          این نسخه فقط در همین مرورگر ذخیره می‌شود؛ همگام‌سازی گوشی و رایانه و
-          امنیت سمت سرور ندارد.
-        </p>
       </section>
       <section class="login-card" aria-labelledby="loginTitle">
         <div class="login-card-head">
           <span class="eyebrow">ورود به حساب</span>
           <h2 id="loginTitle">خوش آمدید</h2>
-          <p id="loginStatus" role="status">آماده‌سازی حساب‌های محلی…</p>
+          <p id="loginStatus" role="status">آماده‌سازی ورود…</p>
         </div>
         <form onsubmit="loginLocal(event)" class="login-form">
           <label for="loginUsername">نام کاربری</label
@@ -69,26 +60,6 @@
             <option value="colorful">رنگی · سبزآبی</option>
           </select>
         </div>
-        <details class="demo-accounts">
-          <summary>اطلاعات ورود اولیهٔ حساب‌های آزمایشی</summary>
-          <p>
-            این رمزها عمومی و فقط برای نمایش‌اند. مدیر می‌تواند آن‌ها را تغییر
-            دهد.
-          </p>
-          <div class="credential-row">
-            <b>مدیر سیستم</b><code>admin / DemoAdmin@1405</code>
-          </div>
-          <div class="credential-row">
-            <b>مسئول ناوگان</b><code>fleet / DemoFleet@1405</code>
-          </div>
-          <div class="credential-row">
-            <b>درخواست‌کننده</b><code>requester / DemoRequest@1405</code>
-          </div>
-          <div class="credential-row">
-            <b>رانندگان خودروهای ۱ تا ۸</b
-            ><code>driver1 … driver8 / DemoDriver@1405</code>
-          </div>
-        </details>
       </section>
     </main>
 
@@ -200,7 +171,7 @@
             <path d="M3.05 13A9 9 0 1 0 6 5.3L3 8" />
             <polyline points="12 7 12 12 15 15" />
           </svg>
-          تاریخچه
+          سوابق سفرها
         </button>
         <button class="tab-btn" data-tab="units" onclick="switchTab('units')">
           واحدها
@@ -213,7 +184,7 @@
           data-tab="missions"
           onclick="switchTab('missions')"
         >
-          مأموریت‌های من
+          درخواست‌های من
         </button>
       </nav>
 
@@ -410,8 +381,8 @@
         <div class="centers-map-card">
           <div class="map-toolbar">
             <span class="map-hint"
-              >روی نقشه کلیک کنید تا موقعیت مرکز جدید مشخص شود، سپس برای آن نام
-              بگذارید.</span
+              >برای ثبت موقعیت، روی نقشه نقطه‌ای انتخاب کنید. ثبت مرکز تنها با
+              نام نیز ممکن است.</span
             >
           </div>
           <div id="centersMap"></div>
@@ -423,7 +394,7 @@
               <div class="form-group full">
                 <label>موقعیت انتخاب‌شده روی نقشه</label>
                 <div class="coords-box" id="centerCoords">
-                  هنوز نقطه‌ای انتخاب نشده است
+                  موقعیت انتخاب نشده است؛ ثبت نام مرکز همچنان ممکن است
                 </div>
               </div>
               <div class="form-group full">
@@ -465,7 +436,7 @@
     <section id="tab-history" class="tab-panel">
       <div class="req-list-card">
         <div class="req-list-head">
-          <span>بایگانی مسیرهای پیموده‌شده (۷ روز اخیر)</span>
+          <span>سوابق سفرها</span>
           <select
             id="historyFilter"
             class="history-select"
@@ -501,7 +472,7 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <div id="toastRoot"></div>
-    <script src="pickers.js"></script>
-    <script src="app.js"></script>
+    <script src="pickers.js?v=14050721"></script>
+    <script src="app.js?v=14050721"></script>
   </body>
 </html>

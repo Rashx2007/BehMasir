@@ -376,6 +376,17 @@ function loadState() {
         .map((x) => x.trim()),
     ),
   ];
+  result.usedUnits = [
+    ...new Set(
+      [
+        ...(Array.isArray(saved.usedUnits) ? saved.usedUnits : []),
+        ...result.samples.map((record) => record.unit),
+        ...result.history.map((record) => record.unit),
+      ]
+        .filter((unit) => typeof unit === "string" && unit.trim())
+        .map((unit) => unit.trim()),
+    ),
+  ];
   result.nextVehicleId = Math.max(Number(saved.nextVehicleId) || 1, next);
   result.nextSampleId = Math.max(
     Number(saved.nextSampleId) || 104,
@@ -398,6 +409,17 @@ function loadState() {
 }
 
 function saveState() {
+  usedRequesterUnits = [
+    ...new Set(
+      [
+        ...usedRequesterUnits,
+        ...samples.map((record) => record.unit),
+        ...history.map((record) => record.unit),
+      ]
+        .filter((unit) => typeof unit === "string" && unit.trim())
+        .map((unit) => unit.trim()),
+    ),
+  ];
   localStorage.setItem(
     STORAGE_KEY,
     JSON.stringify({
@@ -411,6 +433,7 @@ function saveState() {
       centers,
       nextCenterId,
       units: requesterUnits,
+      usedUnits: usedRequesterUnits,
       users: appUsers,
       nextUserId,
     }),
@@ -425,6 +448,7 @@ let nextVehicleId = state.nextVehicleId;
 let centers = state.centers;
 let nextCenterId = state.nextCenterId;
 let requesterUnits = state.units;
+let usedRequesterUnits = state.usedUnits;
 let appUsers = state.users;
 let nextUserId = state.nextUserId;
 let pendingConfirmAction = null;
@@ -534,7 +558,19 @@ function minutesDiff(t1, t2) {
 }
 
 // فاصله Haversine (km)
+function hasCenterCoordinates(center) {
+  return (
+    !!center &&
+    typeof center.lat === "number" &&
+    Number.isFinite(center.lat) &&
+    Math.abs(center.lat) <= 90 &&
+    typeof center.lng === "number" &&
+    Number.isFinite(center.lng) &&
+    Math.abs(center.lng) <= 180
+  );
+}
 function haversine(a, b) {
+  if (!hasCenterCoordinates(a) || !hasCenterCoordinates(b)) return null;
   const R = 6371,
     toR = (d) => (d * Math.PI) / 180;
   const dLat = toR(b.lat - a.lat),
@@ -1154,7 +1190,7 @@ function buildRouteOptions({
   const options = [];
 
   // گزینه‌های ترکیب با سفرهای موجود روی خودروهای دیگر (یا همان خودرو) که هنوز ظرفیت دارند
-  if (nO && nD) {
+  if (hasCenterCoordinates(nO) && hasCenterCoordinates(nD)) {
     cars.forEach((car) => {
       if (car.status !== "ok") return;
       if (loadOn(car) >= capacityOf(car)) return;
@@ -1170,7 +1206,7 @@ function buildRouteOptions({
         .forEach((s) => {
           const sO = locMap[s.origin],
             sD = locMap[s.destination];
-          if (!sO || !sD) return;
+          if (!hasCenterCoordinates(sO) || !hasCenterCoordinates(sD)) return;
           const dOrigin = haversine(nO, sO);
           const dDest = haversine(nD, sD);
           const timeDiff = minutesDiff(time, s.time);
@@ -1206,15 +1242,15 @@ function buildRouteOptions({
     if (clusterCarIds.has(car.id)) return; // قبلاً به‌عنوان گزینه ترکیبی اضافه شد
 
     const isPreferred = car.id === preferredCarId;
-    const dDirect = nO && nD ? haversine(nO, nD) : 0;
+    const dDirect = haversine(nO, nD);
     options.push({
       type: "solo",
       carId: car.id,
       score: -loadOn(car) / capacityOf(car), // نسبت اشغال روز درخواست؛ بدون امتیاز انتخاب دستی
-      distKm: dDirect.toFixed(2),
-      estMin: Math.round((dDirect / 30) * 60) + 5,
+      distKm: dDirect === null ? null : dDirect.toFixed(2),
+      estMin: dDirect === null ? null : Math.round((dDirect / 30) * 60) + 5,
       label: `سفر مستقل با ${car.name}`,
-      desc: `${isPreferred ? "این خودرو در فرم انتخاب شده است؛ انتخاب دستی امتیاز اضافه ندارد. " : ""}نسبت ظرفیت اشغال‌شدهٔ روز درخواست: ${faNum(Math.round((loadOn(car) / capacityOf(car)) * 100))}٪.`,
+      desc: `${isPreferred ? "این خودرو در فرم انتخاب شده است؛ انتخاب دستی امتیاز اضافه ندارد. " : ""}نسبت ظرفیت اشغال‌شدهٔ روز درخواست: ${faNum(Math.round((loadOn(car) / capacityOf(car)) * 100))}٪.${dDirect === null ? " مختصات یک یا هر دو مرکز ثبت نشده است؛ فاصله و زمان سفر قابل برآورد نیست." : ""}`,
     });
   });
 
@@ -1280,7 +1316,7 @@ function openRouteOptionsModal(request) {
 
   if (pendingOptions.length === 0) {
     document.getElementById("modalRoot").innerHTML = `
-      <div class="modal-overlay" onclick="if(event.target===this) closeModal()">
+      <div class="modal-overlay">
         <div class="modal-box" style="max-width:440px">
           <div class="modal-head">
             <div class="modal-title">
@@ -1318,7 +1354,7 @@ function renderRouteOptionsModal() {
   destroyOptionMap();
 
   document.getElementById("modalRoot").innerHTML = `
-    <div class="modal-overlay" onclick="if(event.target===this) closeModal()">
+    <div class="modal-overlay">
       <div class="modal-box">
         <div class="modal-head">
           <div class="modal-title">
@@ -1446,6 +1482,7 @@ function confirmRouteOption() {
 }
 
 function closeModal() {
+  window.Pickers?.closeAll();
   pendingConfirmAction = null;
   if (vehicleShiftPickers) {
     Object.values(vehicleShiftPickers).forEach((picker) => picker.destroy());
@@ -1546,8 +1583,7 @@ function updateBell() {
 function openAlertsModal() {
   if (!requireAccess("fleet.read")) return;
   const alerts = getAlerts();
-  document.getElementById("modalRoot").innerHTML =
-    `<div class="modal-overlay" onclick="if(event.target===this) closeModal()">
+  document.getElementById("modalRoot").innerHTML = `<div class="modal-overlay">
     <div class="modal-box" style="max-width:440px">
       <div class="modal-head"><div class="modal-title">🔔 اعلان‌ها</div><button class="modal-close" onclick="closeModal()">✕</button></div>
       <div class="modal-body">${
@@ -1616,17 +1652,32 @@ const ALERT_ICON_ERR = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColo
 const ALERT_ICON_OK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>`;
 
 function createBaseMap(el, options = {}) {
-  const m = L.map(el, options).setView(DEFAULT_MAP_CENTER, 12);
+  const m = L.map(el, { zoomControl: false, ...options }).setView(
+    DEFAULT_MAP_CENTER,
+    12,
+  );
+  L.control
+    .zoom({ zoomInTitle: "بزرگ‌نمایی نقشه", zoomOutTitle: "کوچک‌نمایی نقشه" })
+    .addTo(m);
   L.tileLayer(TILE_URL, { attribution: "© OpenStreetMap" }).addTo(m);
   return m;
 }
 
 function showAlert(el, type, text) {
   if (!el) return;
-  el.innerHTML = `<div class="alert alert-${type === "ok" ? "success" : "error"}">${type === "ok" ? ALERT_ICON_OK : ALERT_ICON_ERR} ${text}</div>`;
+  const message = document.createElement("div");
+  message.className = `alert alert-${type === "ok" ? "success" : "error"}`;
+  message.setAttribute("role", type === "ok" ? "status" : "alert");
+  const icon = document.createElement("span");
+  icon.setAttribute("aria-hidden", "true");
+  icon.innerHTML = type === "ok" ? ALERT_ICON_OK : ALERT_ICON_ERR;
+  const copy = document.createElement("span");
+  copy.textContent = text;
+  message.append(icon, copy);
+  el.replaceChildren(message);
 }
-
 // ─── فهرست‌های مبدأ/مقصد و واحد در فرم ثبت درخواست ───
+
 function renderCenterSelects() {
   ["origin", "destination"].forEach((id) => {
     const sel = document.getElementById(id);
@@ -1676,7 +1727,7 @@ function initCentersMap() {
 function renderCentersMap() {
   if (!centersMap) return;
   centersLayer.clearLayers();
-  centers.forEach((c) => {
+  centers.filter(hasCenterCoordinates).forEach((c) => {
     L.circleMarker([c.lat, c.lng], {
       radius: 8,
       fillColor: "#2563eb",
@@ -1723,7 +1774,7 @@ function clearDraft() {
   draftMarker = null;
   const coords = document.getElementById("centerCoords");
   if (coords) {
-    coords.textContent = "هنوز نقطه‌ای انتخاب نشده است";
+    coords.textContent = "موقعیت انتخاب نشده است؛ ثبت نام مرکز همچنان ممکن است";
     coords.classList.remove("has-point");
   }
 }
@@ -1733,39 +1784,31 @@ function saveCenter() {
   const nameEl = document.getElementById("centerName");
   const alertEl = document.getElementById("centerAlert");
   const name = nameEl.value.trim();
-  if (!draftPoint) {
-    showAlert(
-      alertEl,
-      "err",
-      "ابتدا روی نقشه کلیک کنید و موقعیت مرکز را مشخص کنید.",
-    );
-    return;
-  }
-  if (!name) {
-    showAlert(alertEl, "err", "لطفاً برای مرکز یک نام وارد کنید.");
+  if (!name || name.length > 100) {
+    showAlert(alertEl, "err", "نام مرکز را وارد کنید؛ حداکثر ۱۰۰ نویسه.");
     return;
   }
   if (centers.some((c) => c.name === name)) {
     showAlert(alertEl, "err", "مرکزی با این نام قبلاً ثبت شده است.");
     return;
   }
-  centers.push({
-    id: nextCenterId++,
-    name,
-    lat: Number(draftPoint.lat.toFixed(6)),
-    lng: Number(draftPoint.lng.toFixed(6)),
-  });
+  const position = hasCenterCoordinates(draftPoint)
+    ? {
+        lat: Number(draftPoint.lat.toFixed(6)),
+        lng: Number(draftPoint.lng.toFixed(6)),
+      }
+    : { lat: null, lng: null };
+  centers.push({ id: nextCenterId++, name, ...position });
   saveState();
   clearDraft();
   nameEl.value = "";
   showAlert(
     alertEl,
     "ok",
-    `مرکز «${esc(name)}» ثبت شد و برای همه کاربران در فهرست مبدأ/مقصد نمایش داده می‌شود.`,
+    `مرکز «${name}» ثبت شد${position.lat === null ? "؛ موقعیت آن روی نقشه هنوز ثبت نشده است" : ""}.`,
   );
-  setTimeout(() => {
-    alertEl.innerHTML = "";
-  }, 5000);
+  showToast("success", "مرکز جدید به فهرست مبدأ و مقصد اضافه شد.");
+  setTimeout(() => alertEl.replaceChildren(), 6000);
   render();
 }
 
@@ -1782,7 +1825,7 @@ function renderCentersList() {
             (c) => `<li class="center-item">
       <div class="center-info">
         <div class="center-name">${esc(c.name)}</div>
-        <div class="center-coords">${c.lat.toFixed(5)}، ${c.lng.toFixed(5)}</div>
+        <div class="center-coords">${hasCenterCoordinates(c) ? `${c.lat.toFixed(5)}، ${c.lng.toFixed(5)}` : "موقعیت روی نقشه ثبت نشده است"}</div>
       </div>
       <span class="req-actions">
         <button class="icon-btn" title="نمایش روی نقشه" onclick="focusCenter(${c.id})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></button>
@@ -1796,7 +1839,17 @@ function renderCentersList() {
 
 function focusCenter(id) {
   const c = centers.find((x) => x.id === id);
-  if (!c || !centersMap) return;
+  if (!hasCenterCoordinates(c)) {
+    showToast("info", "برای این مرکز موقعیت روی نقشه ثبت نشده است.");
+    return;
+  }
+  if (!centersMap) {
+    showToast(
+      "warning",
+      "نقشه در دسترس نیست؛ نام مرکز همچنان قابل استفاده است.",
+    );
+    return;
+  }
   centersMap.setView([c.lat, c.lng], 15);
 }
 
@@ -1805,7 +1858,7 @@ function openCenterRenameModal(id) {
   const c = centers.find((x) => x.id === id);
   if (!c) return;
   document.getElementById("modalRoot").innerHTML = `
-    <div class="modal-overlay" onclick="if(event.target===this) closeModal()">
+    <div class="modal-overlay">
       <div class="modal-box" style="max-width:440px">
         <div class="modal-head">
           <div class="modal-title">تغییر نام مرکز</div>
@@ -1882,6 +1935,7 @@ let optionMapLayer = null;
 
 function destroyOptionMap() {
   if (optionMap) {
+    optionMap.stop();
     optionMap.remove();
     optionMap = null;
     optionMapLayer = null;
@@ -1910,7 +1964,7 @@ function buildSharedTripStops(opt) {
   const stops = [];
   raw.forEach((r) => {
     const c = getCenter(r.name);
-    if (!c) return;
+    if (!hasCenterCoordinates(c)) return;
     const last = stops[stops.length - 1];
     // یک مرکز مشترک (مثلاً مبدأ یکسان) فقط یک نقطه حساب می‌شود
     if (last && last.kind === r.kind && last.name === r.name) {
@@ -1958,7 +2012,12 @@ function updateOptionMap() {
     return;
   }
   if (!optionMap) {
-    optionMap = createBaseMap(mapEl, { scrollWheelZoom: false });
+    optionMap = createBaseMap(mapEl, {
+      scrollWheelZoom: false,
+      zoomAnimation: false,
+      fadeAnimation: false,
+      markerZoomAnimation: false,
+    });
     optionMapLayer = L.layerGroup().addTo(optionMap);
   }
   optionMapLayer.clearLayers();
@@ -1984,9 +2043,10 @@ function updateOptionMap() {
       .bindTooltip(esc(st.name), { direction: "top", offset: [0, -10] });
   });
 
-  if (points.length === 1) optionMap.setView(points[0], 14);
+  if (points.length === 1) optionMap.setView(points[0], 14, { animate: false });
   else if (points.length > 1)
     optionMap.fitBounds(L.latLngBounds(points), {
+      animate: false,
       padding: [30, 30],
       maxZoom: 15,
     });
@@ -2021,7 +2081,7 @@ function renderVehicles() {
           <div class="vehicle-plate">پلاک: ${esc(car.plate)}</div>
         </div>
         <div class="vehicle-actions">
-          <button class="icon-btn" title="ویرایش" onclick="openVehicleForm(${car.id})">
+          <button class="icon-btn" title="${vehicleHasOpenMission(car.id) ? "ویرایش پس از اتمام یا حذف درخواست باز امکان‌پذیر است" : "ویرایش مشخصات خودرو"}" aria-disabled="${vehicleHasOpenMission(car.id)}" onclick="openVehicleForm(${car.id})">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           </button>
           <button class="icon-btn danger" title="حذف" onclick="deleteVehicle(${car.id})">
@@ -2047,10 +2107,22 @@ function renderVehicles() {
     .join("");
 }
 
+function vehicleHasOpenMission(vehicleId) {
+  return samples.some(
+    (sample) => sample.carId === vehicleId && sample.status !== "delivered",
+  );
+}
 function openVehicleForm(vehicleId) {
   if (!requireAccess("fleet.write")) return;
   closeModal();
   const isEdit = vehicleId != null;
+  if (isEdit && vehicleHasOpenMission(vehicleId)) {
+    showToast(
+      "warning",
+      "این خودرو درخواست باز دارد؛ پس از اتمام یا حذف آن درخواست می‌توانید خودرو را ویرایش کنید.",
+    );
+    return;
+  }
   const v = isEdit
     ? vehicles.find((x) => x.id === vehicleId)
     : {
@@ -2076,7 +2148,7 @@ function openVehicleForm(vehicleId) {
   const is24h = !v.shiftStart && !v.shiftEnd;
 
   document.getElementById("modalRoot").innerHTML = `
-    <div class="modal-overlay" onclick="if(event.target===this) closeModal()">
+    <div class="modal-overlay">
       <div class="modal-box">
         <div class="modal-head">
           <div class="modal-title">
@@ -2247,6 +2319,17 @@ function toggleContractorField() {
 
 function saveVehicleForm(vehicleId) {
   if (!requireAccess("fleet.write")) return;
+  if (
+    vehicleId != null &&
+    (!vehicles.some((v) => v.id === vehicleId) ||
+      vehicleHasOpenMission(vehicleId))
+  ) {
+    showToast(
+      "warning",
+      "وضعیت خودرو تغییر کرده است؛ خودروی حذف‌شده یا دارای درخواست باز قابل ویرایش نیست.",
+    );
+    return;
+  }
   const name = document.getElementById("vf_name").value.trim();
   const plate = document.getElementById("vf_plate").value.trim();
   if (!name || !plate) {
@@ -2345,21 +2428,56 @@ function deleteVehicle(vehicleId) {
 
 // ─── توست (جایگزین alert مرورگر) ───
 function showToast(type, text) {
+  const kind = ["success", "error", "warning", "info"].includes(type)
+    ? type
+    : "info";
+  const labels = {
+    success: "انجام شد",
+    error: "نیاز به بررسی",
+    warning: "توجه",
+    info: "اطلاع‌رسانی",
+  };
+  const signs = { success: "✓", error: "!", warning: "!", info: "i" };
   let root = document.getElementById("toastRoot");
   if (!root) {
     root = document.createElement("div");
     root.id = "toastRoot";
-    document.body.appendChild(root);
+    document.body.append(root);
   }
-  const el = document.createElement("div");
-  el.className = `toast toast-${type}`;
-  el.textContent = text;
-  root.appendChild(el);
-  setTimeout(() => el.classList.add("show"), 10);
-  setTimeout(() => {
-    el.classList.remove("show");
-    setTimeout(() => el.remove(), 300);
-  }, 4000);
+  const toast = document.createElement("div");
+  toast.className = `toast toast-${kind}`;
+  toast.setAttribute("role", kind === "error" ? "alert" : "status");
+  toast.innerHTML = `<span class="toast-symbol" aria-hidden="true">${signs[kind]}</span><div class="toast-copy"><strong>${labels[kind]}</strong><p></p></div><button type="button" class="toast-close" aria-label="بستن پیام" data-tooltip="بستن پیام">×</button>`;
+  toast.querySelector("p").textContent = String(text);
+  root.append(toast);
+  while (root.children.length > 4) root.firstElementChild.remove();
+  let timer,
+    remaining = kind === "error" ? 7000 : 6000,
+    started;
+  const dismiss = () => {
+    clearTimeout(timer);
+    toast.classList.remove("show");
+    setTimeout(() => toast.remove(), 250);
+  };
+  const resume = () => {
+    if (toast.matches(":hover") || toast.contains(document.activeElement))
+      return;
+    clearTimeout(timer);
+    started = Date.now();
+    timer = setTimeout(dismiss, remaining);
+  };
+  const pause = () => {
+    clearTimeout(timer);
+    if (started) remaining = Math.max(0, remaining - (Date.now() - started));
+    started = null;
+  };
+  toast.querySelector("button").addEventListener("click", dismiss);
+  toast.addEventListener("pointerenter", pause);
+  toast.addEventListener("pointerleave", resume);
+  toast.addEventListener("focusin", pause);
+  toast.addEventListener("focusout", resume);
+  requestAnimationFrame(() => toast.classList.add("show"));
+  resume();
 }
 
 // ─── اتصال تقویم جلالی به Picker جدید ───
@@ -2617,6 +2735,13 @@ function clearProtectedContent() {
     "unitList",
   ].forEach((id) => document.getElementById(id)?.replaceChildren());
 }
+function userDisplayName(user) {
+  if (user.username === "admin" && user.name === "مدیر نمایشی")
+    return "مدیر سیستم";
+  if (user.username === "requester" && user.name === "درخواست‌کنندهٔ نمایشی")
+    return "درخواست‌کننده";
+  return user.name;
+}
 function applyRoleVisibility() {
   const tabs = allowedTabs();
   document.body.dataset.auth = currentUser ? "open" : "locked";
@@ -2629,7 +2754,7 @@ function applyRoleVisibility() {
   });
   document.querySelector(".bell-btn").hidden = !canAccess("fleet.read");
   document.getElementById("currentUserLabel").textContent = currentUser
-    ? `${currentUser.name} · ${ROLE_LABELS[currentUser.role]}`
+    ? `${userDisplayName(currentUser)} · ${ROLE_LABELS[currentUser.role]}`
     : "ورود به سامانه";
 }
 
@@ -2702,7 +2827,7 @@ async function seedLocalUsers() {
   const seed = [
     {
       username: "admin",
-      name: "مدیر نمایشی",
+      name: "مدیر سیستم",
       role: "admin",
       password: "DemoAdmin@1405",
     },
@@ -2714,7 +2839,7 @@ async function seedLocalUsers() {
     },
     {
       username: "requester",
-      name: "درخواست‌کنندهٔ نمایشی",
+      name: "درخواست‌کننده",
       role: "requester",
       unit: "امور اداری",
       password: "DemoRequest@1405",
@@ -2779,7 +2904,7 @@ async function bootLocalAccess() {
     }
     document.getElementById("loginSubmit").disabled = false;
     document.getElementById("loginStatus").textContent =
-      "برای ادامه، وارد حساب محلی خود شوید.";
+      "برای ادامه، وارد حساب خود شوید.";
   } catch (error) {
     document.getElementById("loginStatus").textContent =
       error.message || "آماده‌سازی ورود انجام نشد.";
@@ -2853,6 +2978,10 @@ setInterval(() => {
     logoutLocal("نشست پایان یافت؛ دوباره وارد شوید.");
 }, 30000);
 window.addEventListener("storage", (event) => {
+  if (event.key === THEME_KEY && event.newValue && !currentUser) {
+    applyTheme(event.newValue);
+    return;
+  }
   if (event.key !== STORAGE_KEY || !event.newValue) return;
   try {
     const fresh = JSON.parse(event.newValue);
@@ -2864,6 +2993,12 @@ window.addEventListener("storage", (event) => {
     history = fresh.history;
     centers = fresh.centers;
     requesterUnits = fresh.units;
+    usedRequesterUnits = [
+      ...new Set([
+        ...usedRequesterUnits,
+        ...(Array.isArray(fresh.usedUnits) ? fresh.usedUnits : []),
+      ]),
+    ];
     appUsers = fresh.users;
     nextSampleId = fresh.nextSampleId;
     nextVehicleId = fresh.nextVehicleId;
@@ -2876,6 +3011,11 @@ window.addEventListener("storage", (event) => {
         return;
       }
       currentUser = user;
+      applyTheme(
+        userPreferences(currentUser).theme ||
+          localStorage.getItem(THEME_KEY) ||
+          "system",
+      );
       render();
     }
   } catch {
@@ -2899,16 +3039,20 @@ function addUnit() {
   saveState();
   renderUnitList();
   renderUnitsPanel();
-  showToast("success", "واحد در دادهٔ محلی ذخیره شد.");
+  showToast("success", "واحد با موفقیت ذخیره شد.");
+}
+function unitIsInUse(unit) {
+  return (
+    usedRequesterUnits.includes(unit) ||
+    [...samples, ...history].some((record) => record.unit === unit) ||
+    appUsers.some((user) => user.unit === unit)
+  );
 }
 function removeUnit(index) {
   if (!requireAccess("units.write")) return;
   const unit = requesterUnits[index];
   if (!unit) return;
-  if (
-    [...samples, ...history].some((r) => r.unit === unit) ||
-    appUsers.some((u) => u.unit === unit)
-  ) {
+  if (unitIsInUse(unit)) {
     showToast(
       "error",
       "واحد در درخواست، سابقه یا حساب کاربری استفاده شده است.",
@@ -2917,6 +3061,13 @@ function removeUnit(index) {
   }
   openLocalConfirm("حذف واحد", `واحد «${unit}» از فهرست حذف شود؟`, () => {
     if (!requireAccess("units.write")) return;
+    if (unitIsInUse(unit)) {
+      showToast(
+        "warning",
+        "این واحد اکنون سابقهٔ استفاده دارد و قابل حذف نیست.",
+      );
+      return;
+    }
     requesterUnits = requesterUnits.filter((v) => v !== unit);
     saveState();
     closeModal();
@@ -2941,8 +3092,8 @@ function renderUsersPanel() {
     el.replaceChildren();
     return;
   }
-  el.innerHTML = `<div class="section-heading"><div><span class="eyebrow">مدیریت دسترسی محلی</span><h2>کاربران سامانه</h2><p>نقش و تخصیص خودرو، بخش‌های قابل استفاده را مشخص می‌کند.</p></div><button class="btn-primary" onclick="openUserForm(null)">افزودن کاربر</button></div>
-  <div class="management-card user-grid">${appUsers.map((u) => `<article class="account-card"><div class="account-title"><h3>${esc(u.name)}</h3><span class="badge ${u.active ? "badge-green" : "badge-red"}">${u.active ? "فعال" : "غیرفعال"}</span></div><p dir="ltr" class="username">${esc(u.username)}</p><p>${ROLE_LABELS[u.role] || "نقش نامعتبر"}</p>${u.role === "requester" ? `<p>واحد: ${esc(u.unit || "—")}</p>` : ""}${u.role === "driver" ? `<p>خودرو: ${esc((u.vehicleIds || []).map((id) => vehicles.find((v) => v.id === id)?.name || "حذف‌شده").join("، ") || "بدون تخصیص")}</p>` : ""}<button class="quiet-button" onclick="openUserForm(${u.id})">ویرایش و تغییر رمز</button></article>`).join("")}</div>`;
+  el.innerHTML = `<div class="section-heading"><div><span class="eyebrow">مدیریت دسترسی کاربران</span><h2>کاربران سامانه</h2><p>نقش و تخصیص خودرو، بخش‌های قابل استفاده را مشخص می‌کند.</p></div><button class="btn-primary" onclick="openUserForm(null)">افزودن کاربر</button></div>
+  <div class="management-card user-grid">${appUsers.map((u) => `<article class="account-card"><div class="account-title"><h3>${esc(userDisplayName(u))}</h3><span class="badge ${u.active ? "badge-green" : "badge-red"}">${u.active ? "فعال" : "غیرفعال"}</span></div><p dir="ltr" class="username">${esc(u.username)}</p><p>${ROLE_LABELS[u.role] || "نقش نامعتبر"}</p>${u.role === "requester" ? `<p>واحد: ${esc(u.unit || "—")}</p>` : ""}${u.role === "driver" ? `<p>خودرو: ${esc((u.vehicleIds || []).map((id) => vehicles.find((v) => v.id === id)?.name || "حذف‌شده").join("، ") || "بدون تخصیص")}</p>` : ""}<button class="quiet-button" onclick="openUserForm(${u.id})">ویرایش و تغییر رمز</button></article>`).join("")}</div>`;
 }
 function openUserForm(id) {
   if (!requireAccess("users.write")) return;
@@ -2958,7 +3109,7 @@ function openUserForm(id) {
   document.getElementById("modalRoot").innerHTML =
     `<div class="modal-overlay"><div class="modal-box"><div class="modal-head"><h2 class="modal-title">${id ? "ویرایش کاربر" : "کاربر جدید"}</h2><button class="modal-close" aria-label="بستن" onclick="closeModal()">×</button></div>
   <form onsubmit="event.preventDefault();saveUserForm(${id || "null"})"><div class="modal-body form-grid">
-  <div class="form-group"><label for="uf_name">نام نمایشی</label><input id="uf_name" type="text" maxlength="80" value="${esc(u.name)}" required></div>
+  <div class="form-group"><label for="uf_name">نام کامل</label><input id="uf_name" type="text" maxlength="80" value="${esc(userDisplayName(u))}" required></div>
   <div class="form-group"><label for="uf_username">نام کاربری لاتین</label><input id="uf_username" type="text" dir="ltr" autocomplete="off" maxlength="32" value="${esc(u.username)}" required></div>
   <div class="form-group"><label for="uf_role">نقش</label><select id="uf_role" onchange="toggleUserFields()">${Object.entries(
     ROLE_LABELS,
@@ -2972,7 +3123,6 @@ function openUserForm(id) {
   <div class="form-group full" id="uf_unitWrap"><label for="uf_unit">واحد درخواست‌کننده</label><select id="uf_unit">${requesterUnits.map((unit) => `<option value="${esc(unit)}" ${u.unit === unit ? "selected" : ""}>${esc(unit)}</option>`).join("")}</select></div>
   <fieldset class="form-group full" id="uf_vehicleWrap"><legend>خودروهای تخصیص‌یافته به راننده</legend><div class="assignment-grid">${vehicles.map((v) => `<label><input type="checkbox" name="uf_vehicle" value="${v.id}" ${u.vehicleIds?.includes(v.id) ? "checked" : ""}>${esc(v.name)}</label>`).join("")}</div></fieldset>
   <label class="checkbox-row full"><input id="uf_active" type="checkbox" ${u.active ? "checked" : ""}>حساب فعال باشد</label>
-  <p class="form-note full">این دسترسی‌ها محلی و نمایشی هستند؛ برای استفادهٔ عملیاتی، کنترل سمت سرور لازم است.</p>
   </div><div class="modal-foot"><button type="button" class="btn-secondary" onclick="closeModal()">انصراف</button><button class="btn-primary" id="saveUserButton" type="submit">ذخیرهٔ کاربر</button></div></form></div></div>`;
   toggleUserFields();
 }
@@ -3078,37 +3228,38 @@ async function saveUserForm(id) {
 const SECTION_GUIDES = {
   dashboard: [
     "داشبورد ناوگان",
-    "خلاصهٔ خودروها و درخواست‌ها را ببینید. این داده‌ها فقط در همین مرورگر ذخیره می‌شوند.",
+    "در این قسمت وضعیت خودروها، تعداد درخواست‌های امروز و موارد نیازمند پیگیری را یک‌جا ببینید. برای بررسی جزئیات یا انجام عملیات، به بخش خودروها یا درخواست‌ها بروید.",
   ],
   vehicles: [
     "مدیریت خودروها",
-    "مشخصات و شیفت را با انتخابگر یکپارچه ویرایش کنید. خودرو با مأموریت باز یا رانندهٔ فعال، پیش از حذف نیاز به جابه‌جایی تخصیص دارد.",
+    "در این قسمت می‌توانید مشخصات خودروها را ویرایش کنید یا خودروی جدید تعریف کنید.\nخودروهایی که در حال حاضر برای آنها مأموریتی در نظر گرفته شده‌ است، تا اتمام یا حذف آن مأموریت قابل ویرایش نیستند.",
   ],
   requests: [
     "ثبت و پیگیری درخواست",
-    "تاریخ و ساعت تحویل را مشخص کنید؛ پیشنهادها مستقل از انتخاب خودرو رتبه‌بندی می‌شوند. درخواست‌کننده فقط درخواست‌های خودش را می‌بیند.",
+    "در این بخش می‌توانید درخواست جدید ثبت کنید.\nهر شخص، فقط درخواست‌های خودش را می‌بیند.",
   ],
   centers: [
     "مراکز مبدأ و مقصد",
-    "برای مرکز جدید یک نقطه و نام ثبت کنید. برای نمایش نقشه، کتابخانه و کاشی‌های آنلاین باید در دسترس باشند.",
+    "برای ایجاد یک مرکز جدید می‌توانید بر روی نقشه یک نقطه را انتخاب کنید و نام آن را ثبت کنید.\nدر صورت عدم بارگذاری نقشه آنلاین، می‌توانید همچنان با واردکردن نام هر مرکزی آن را ثبت کنید.",
   ],
   history: [
-    "سوابق مجاز",
-    "مدیر و مسئول ناوگان همهٔ سوابق را می‌بینند؛ درخواست‌کننده فقط سوابق درخواست‌های خودش را می‌بیند.",
+    "سوابق سفرها",
+    "مدیر و مسئول ناوگان می‌توانند همهٔ سوابق را ببینند در حالی که سایرین فقط سوابق درخواست‌های خودشان را می‌بینند.",
   ],
   units: [
     "واحدهای درخواست‌کننده",
-    "واحد جدید را به فهرست مستقل اضافه کنید. حذف درخواست، واحد آن را پاک نمی‌کند؛ واحد استفاده‌شده قابل حذف نیست.",
+    "در این قسمت می‌توانید واحد جدید را به فهرست اضافه کنید.\nحذف هر درخواست، واحد آن را پاک نمی‌کند،\nواحدی که برای آن قبلاً مأموریتی ثبت شده، قابل حذف نیست.",
   ],
   users: [
     "مدیریت حساب‌ها",
-    "برای هر کاربر نقش تعیین کنید. راننده فقط خودروهای تخصیص‌یافته را می‌بیند. حساب‌های آزمایشی برای استفادهٔ عملیاتی مناسب نیستند.",
+    "برای هر کاربر نقش تعیین کنید. راننده فقط خودروهای تخصیص‌یافته را می‌بیند.",
   ],
   missions: [
     "پنل راننده",
-    "جاری، رزرو آینده و انجام‌شده را جدا ببینید. ابتدا «شروع مأموریت» و سپس «ثبت تحویل» را بزنید. این دمو بین گوشی و رایانه همگام نمی‌شود.",
+    "درخواست‌های جاری، آینده و انجام‌شده را می‌توانید به صورت جداگانه مشاهده کنید. ابتدا «شروع مأموریت» و سپس «ثبت تحویل» را بزنید.",
   ],
 };
+
 function guideDismissed(tab) {
   return (userPreferences(currentUser).dismissedGuides || []).includes(tab);
 }
@@ -3147,13 +3298,20 @@ function showSectionGuide(tab = currentTab) {
   if (!currentUser || !allowedTabs().includes(tab)) return;
   const info = SECTION_GUIDES[tab];
   if (!info) return;
+  window.Pickers?.closeAll();
+  document.getElementById("guideRoot").dataset.guideTab = tab;
   document.getElementById("guideRoot").innerHTML =
-    `<div class="guide-overlay"><section class="guide-dialog" role="dialog" aria-modal="true" aria-labelledby="guideTitle"><span class="eyebrow">راهنمای ${esc(ROLE_LABELS[currentUser.role])}</span><h2 id="guideTitle">${esc(info[0])}</h2><p>${esc(info[1])}</p><label class="checkbox-row"><input id="guideDontShow" type="checkbox">این راهنما دوباره نمایش داده نشود</label><div class="guide-foot"><button class="btn-primary" onclick="finishGuide('${tab}')">متوجه شدم</button></div></section></div>`;
+    `<div class="guide-overlay"><section class="guide-dialog" role="dialog" aria-modal="true" aria-labelledby="guideTitle"><button type="button" class="modal-close guide-close" aria-label="بستن راهنما" onclick="requestCloseGuide()">×</button><span class="eyebrow">راهنمای ${esc(ROLE_LABELS[currentUser.role])}</span><h2 id="guideTitle">${esc(info[0])}</h2><p>${esc(info[1])}</p><label class="checkbox-row"><input id="guideDontShow" type="checkbox">این راهنما دوباره نمایش داده نشود</label><div class="guide-foot"><button class="btn-primary" onclick="finishGuide('${tab}')">متوجه شدم</button></div></section></div>`;
   document.querySelector(".guide-foot button").focus();
 }
 function finishGuide(tab) {
   if (document.getElementById("guideDontShow")?.checked) dismissGuide(tab);
   else closeGuide();
+}
+function requestCloseGuide() {
+  finishGuide(
+    document.getElementById("guideRoot").dataset.guideTab || currentTab,
+  );
 }
 function closeGuide() {
   document.getElementById("guideRoot").replaceChildren();
@@ -3161,26 +3319,13 @@ function closeGuide() {
 function resetGuides() {
   if (!currentUser) return;
   userPreferences(currentUser).dismissedGuides = [];
+  userPreferences(currentUser).hideModalCloseHelp = false;
   shownGuides.clear();
   saveState();
   refreshGuides();
   closeModal();
   showSectionGuide(currentTab);
 }
-document.addEventListener(
-  "keydown",
-  (event) => {
-    if (
-      event.key === "Escape" &&
-      document.getElementById("guideRoot").childElementCount
-    ) {
-      event.preventDefault();
-      closeGuide();
-    }
-  },
-  true,
-);
-
 // ─── تنظیمات ظاهری و رمز شخصی ───
 function applyTheme(value) {
   const requested = ["system", "light", "dark", "colorful"].includes(value)
@@ -3197,15 +3342,28 @@ function applyTheme(value) {
     resolved === "dark" ? "dark" : "light";
   const select = document.getElementById("loginTheme");
   if (select) select.value = requested;
+  const profile = document.getElementById("profileTheme");
+  if (profile) profile.value = requested;
+  document.querySelectorAll("[data-theme-choice]").forEach((button) => {
+    button.setAttribute(
+      "aria-pressed",
+      String(button.dataset.themeChoice === requested),
+    );
+  });
 }
 function setTheme(value) {
   if (!["system", "light", "dark", "colorful"].includes(value)) return;
-  localStorage.setItem(THEME_KEY, value);
-  if (currentUser) {
-    userPreferences(currentUser).theme = value;
-    saveState();
-  }
   applyTheme(value);
+  if (currentUser) userPreferences(currentUser).theme = value;
+  try {
+    localStorage.setItem(THEME_KEY, value);
+    if (currentUser) saveState();
+  } catch {
+    showToast(
+      "warning",
+      "ظاهر تغییر کرد، اما ذخیرهٔ انتخاب ممکن نشد؛ فضای ذخیره‌سازی را بررسی کنید.",
+    );
+  }
 }
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
   const value = currentUser
@@ -3215,6 +3373,7 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
     : localStorage.getItem(THEME_KEY) || "system";
   if (value === "system") applyTheme(value);
 });
+
 function openPreferences() {
   if (!currentUser) return;
   closeModal();
@@ -3223,22 +3382,46 @@ function openPreferences() {
     localStorage.getItem(THEME_KEY) ||
     "system";
   document.getElementById("modalRoot").innerHTML =
-    `<div class="modal-overlay"><div class="modal-box"><div class="modal-head"><h2 class="modal-title">تنظیمات شخصی</h2><button class="modal-close" aria-label="بستن" onclick="closeModal()">×</button></div><div class="modal-body settings-stack">
-  <label for="profileTheme">ظاهر سامانه</label><select id="profileTheme" onchange="setTheme(this.value)">${[
-    ["system", "پیش‌فرض دستگاه"],
-    ["light", "روشن"],
-    ["dark", "تیره"],
-    ["colorful", "رنگی · سبزآبی"],
+    `<div class="modal-overlay"><section class="modal-box preferences-dialog"><div class="modal-head"><h2 class="modal-title">تنظیمات</h2><button type="button" class="modal-close" aria-label="بستن تنظیمات" onclick="closeModal()">×</button></div>
+  <div class="modal-body"><div class="settings-tabs" role="tablist" aria-label="موضوع تنظیمات">${[
+    ["appearance", "ظاهر"],
+    ["password", "تغییر رمز"],
+    ["guides", "راهنماها"],
   ]
     .map(
-      ([v, l]) =>
-        `<option value="${v}" ${v === theme ? "selected" : ""}>${l}</option>`,
+      ([id, label], i) =>
+        `<button type="button" id="settingsTab-${id}" role="tab" aria-controls="settingsPanel-${id}" aria-selected="${i === 0}" tabindex="${i === 0 ? 0 : -1}" onclick="selectSettingsTab('${id}')">${label}</button>`,
     )
-    .join("")}</select>
-  <button class="btn-secondary" onclick="resetGuides()">بازنمایش همهٔ راهنماها</button><button class="btn-secondary" onclick="closeModal();showSectionGuide()">راهنمای بخش فعلی</button>
-  <hr><h3>تغییر رمز حساب خود</h3><form class="settings-stack" onsubmit="event.preventDefault();changeOwnPassword()"><label for="ownOldPassword">رمز فعلی</label><input type="password" id="ownOldPassword" autocomplete="current-password" required><label for="ownNewPassword">رمز جدید؛ حداقل ۸ نویسه</label><input type="password" id="ownNewPassword" autocomplete="new-password" minlength="8" required><button class="btn-primary" id="ownPasswordButton">ذخیرهٔ رمز</button></form>
-  <p class="local-warning">نسخهٔ محلی است؛ اطلاعات دستگاه دیگر و امنیت سمت سرور در این نسخه وجود ندارد.</p></div></div></div>`;
+    .join("")}</div>
+  <section id="settingsPanel-appearance" class="settings-stack settings-panel" role="tabpanel" aria-labelledby="settingsTab-appearance"><h3>ظاهر سامانه</h3><p class="settings-note">ظاهر انتخاب‌شده بلافاصله اعمال می‌شود و برای حساب شما باقی می‌ماند.</p>
+  <div class="theme-choices" role="group" aria-label="انتخاب ظاهر">${[
+    ["light", "روشن"],
+    ["dark", "تیره"],
+    ["colorful", "رنگی"],
+    ["system", "پیش‌فرض دستگاه"],
+  ]
+    .map(
+      ([value, label]) =>
+        `<button type="button" class="theme-choice" data-theme-choice="${value}" aria-pressed="${theme === value}" onclick="setTheme('${value}')"><span class="theme-preview theme-preview-${value}" aria-hidden="true"></span><strong>${label}</strong><span class="theme-selected" aria-hidden="true">✓</span></button>`,
+    )
+    .join("")}</div></section>
+  <section id="settingsPanel-password" class="settings-stack settings-panel" role="tabpanel" aria-labelledby="settingsTab-password" hidden><h3>تغییر رمز حساب</h3><form class="settings-stack" onsubmit="event.preventDefault();changeOwnPassword()"><label for="ownOldPassword">رمز فعلی</label><input type="password" id="ownOldPassword" autocomplete="current-password" required><label for="ownNewPassword">رمز جدید؛ حداقل ۸ نویسه</label><input type="password" id="ownNewPassword" autocomplete="new-password" minlength="8" required><button class="btn-primary" id="ownPasswordButton">ذخیرهٔ رمز</button></form></section>
+  <section id="settingsPanel-guides" class="settings-stack settings-panel" role="tabpanel" aria-labelledby="settingsTab-guides" hidden><h3>نمایش راهنماها</h3><p class="settings-note">راهنمای هر بخش و راهنمای بستن پنجره را می‌توانید دوباره فعال کنید.</p><button type="button" class="btn-secondary" onclick="resetGuides()">بازنمایش همهٔ راهنماها</button><button type="button" class="btn-secondary" onclick="closeModal();showSectionGuide()">راهنمای بخش فعلی</button><button type="button" class="btn-secondary" onclick="restoreModalCloseHelp()">بازنمایش راهنمای بستن پنجره</button></section>
+  </div></section></div>`;
 }
+function selectSettingsTab(id, focus = false) {
+  if (!["appearance", "password", "guides"].includes(id)) return;
+  document.querySelectorAll(".settings-tabs [role=tab]").forEach((button) => {
+    const active = button.id === `settingsTab-${id}`;
+    button.setAttribute("aria-selected", String(active));
+    button.tabIndex = active ? 0 : -1;
+    if (active && focus) button.focus();
+  });
+  document.querySelectorAll(".settings-panel").forEach((panel) => {
+    panel.hidden = panel.id !== `settingsPanel-${id}`;
+  });
+}
+
 async function changeOwnPassword() {
   if (!currentUser) return;
   const user = currentUser,
@@ -3314,11 +3497,14 @@ function renderMissions() {
   const rows = [...selected].sort((a, b) =>
     (a.date + a.time).localeCompare(b.date + b.time),
   );
-  el.innerHTML = `<div class="driver-heading"><span class="eyebrow">پنل شخصی راننده</span><h1>مأموریت‌های شما</h1><p>${esc(currentUser.name)} · ${esc(formatRouteDate(todayStr()))}</p></div>
-  <div class="mission-switch" role="group" aria-label="فیلتر مأموریت">${[
-    ["current", "جاری", open.length],
-    ["future", "رزرو آینده", future.length],
-    ["completed", "انجام‌شده", done.length],
+  const assignedCars = vehicles.filter((vehicle) =>
+    currentUser.vehicleIds?.includes(vehicle.id),
+  );
+  el.innerHTML = `<div class="driver-heading"><span class="eyebrow">پنل شخصی راننده</span><h1>درخواست‌های شما</h1><p>${esc(userDisplayName(currentUser))} · ${esc(formatRouteDate(todayStr()))}</p><div class="driver-plates">${assignedCars.map((vehicle) => `<span>${esc(vehicle.name)} · پلاک: <b dir="ltr" class="plate-value">${esc(vehicle.plate)}</b></span>`).join("")}</div></div>
+  <div class="mission-switch" role="group" aria-label="فیلتر درخواست‌ها">${[
+    ["current", "درخواست‌های جاری", open.length],
+    ["future", "درخواست‌های آینده", future.length],
+    ["completed", "درخواست‌های انجام‌شده", done.length],
   ]
     .map(
       ([v, l, n]) =>
@@ -3347,13 +3533,13 @@ function renderMissions() {
                   : delayed
                     ? "با تأخیر؛ نیاز به پیگیری"
                     : "در انتظار حرکت";
-            return `<article class="mission-card"><div class="mission-top"><span class="badge ${delivered ? "badge-green" : enroute ? "badge-blue" : delayed ? "badge-red" : "badge-amber"}">${label}</span><span class="mission-number">مأموریت ${faNum(s.id)}</span></div>
+            return `<article class="mission-card"><div class="mission-top"><span class="badge ${delivered ? "badge-green" : enroute ? "badge-blue" : delayed ? "badge-red" : "badge-amber"}">${label}</span><span class="mission-number">درخواست ${faNum(s.id)}</span></div>
     <div class="mission-route"><div><span>مبدأ</span><strong>${esc(s.origin)}</strong></div><div><span>مقصد</span><strong>${esc(s.destination)}</strong></div></div>
     <div class="mission-details"><span>تاریخ <b>${esc(formatRouteDate(s.date))}</b></span><span>ساعت <b dir="ltr">${esc(s.time.replace(/\d/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[Number(d)]))}</b></span><span>خودرو <b>${esc(car?.name || "حذف‌شده")}</b></span><span>واحد <b>${esc(s.unit || "—")}</b></span></div>
-    ${!delivered && !reserved ? `<div class="mission-actions">${enroute ? `<button class="btn-primary" onclick="confirmMissionDelivery(${s.id})">ثبت تحویل</button>` : `<button class="btn-primary" onclick="startMission(${s.id})">شروع مأموریت</button>`}<button class="btn-secondary" onclick="showMissionDetails(${s.id})">جزئیات</button></div>` : `<button class="quiet-button" onclick="showMissionDetails(${s.id})">جزئیات مأموریت</button>`}</article>`;
+    ${!delivered && !reserved ? `<div class="mission-actions">${enroute ? `<button class="btn-primary" onclick="confirmMissionDelivery(${s.id})">ثبت تحویل</button>` : `<button class="btn-primary" onclick="startMission(${s.id})">شروع مأموریت</button>`}<button class="btn-secondary" onclick="showMissionDetails(${s.id})">جزئیات</button></div>` : `<button class="quiet-button" onclick="showMissionDetails(${s.id})">جزئیات درخواست</button>`}</article>`;
           })
           .join("")
-      : `<div class="driver-empty"><h2>مأموریتی در این بخش ندارید</h2><p>رزروهای روزهای بعد را در «رزرو آینده» ببینید. داده‌های گوشی و رایانه در این نسخه مشترک نیستند.</p></div>`
+      : `<div class="driver-empty"><h2>درخواستی در این بخش ندارید</h2><p>درخواست‌های روزهای بعد را در «درخواست‌های آینده» ببینید.</p></div>`
   }</div>`;
 }
 function showMissionDetails(id) {
@@ -3362,7 +3548,7 @@ function showMissionDetails(id) {
     return;
   closeModal();
   document.getElementById("modalRoot").innerHTML =
-    `<div class="modal-overlay"><section class="modal-box"><div class="modal-head"><h2 class="modal-title">جزئیات مأموریت ${faNum(id)}</h2><button class="modal-close" aria-label="بستن" onclick="closeModal()">×</button></div><div class="modal-body settings-stack"><p>مبدأ: <b>${esc(sample.origin)}</b></p><p>مقصد: <b>${esc(sample.destination)}</b></p><p>تاریخ: ${esc(formatRouteDate(sample.date))} · ساعت: ${esc(sample.time)}</p><p>واحد: ${esc(sample.unit)}</p><p class="local-warning">مسیر خیابانی، موقعیت زنده و اعلان گوشی در این نسخه پیاده نشده‌اند.</p></div></section></div>`;
+    `<div class="modal-overlay"><section class="modal-box"><div class="modal-head"><h2 class="modal-title">جزئیات درخواست ${faNum(id)}</h2><button class="modal-close" aria-label="بستن" onclick="closeModal()">×</button></div><div class="modal-body settings-stack"><p>مبدأ: <b>${esc(sample.origin)}</b></p><p>مقصد: <b>${esc(sample.destination)}</b></p><p>تاریخ: ${esc(formatRouteDate(sample.date))} · ساعت: ${esc(sample.time)}</p><p>واحد: <b>${esc(sample.unit)}</b></p><p>پلاک خودرو: <b dir="ltr" class="plate-value">${esc(vehicles.find((vehicle) => vehicle.id === sample.carId)?.plate || "—")}</b></p></div></section></div>`;
 }
 function confirmMissionDelivery(id) {
   const sample = samples.find((s) => s.id === id);
@@ -3427,5 +3613,362 @@ if (timeInput) {
   tp.setValue(8, 0);
   window._timePicker = tp;
 }
+
+// ─── رفتار مشترک مودال‌ها، رمزها و راهنمای اشاره ───
+// کنترل‌های مشترک، بدون واردکردن مقدار رمز یا متن کاربر به HTML.
+function eyeIcon(revealed) {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>${revealed ? "" : '<path d="M3 3l18 18"/>'}</svg>`;
+}
+function enhancePasswordInputs() {
+  document.querySelectorAll('input[type="password"]').forEach((input) => {
+    if (input.dataset.passwordManaged) return;
+    input.dataset.passwordManaged = "true";
+    const wrap = document.createElement("div");
+    wrap.className = "password-control";
+    input.before(wrap);
+    wrap.append(input);
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "password-toggle";
+    toggle.setAttribute("aria-controls", input.id);
+    toggle.setAttribute("aria-pressed", "false");
+    const update = () => {
+      const revealed = input.type === "text";
+      const label = revealed ? "پنهان‌کردن رمز" : "نمایش رمز";
+      toggle.setAttribute("aria-label", label);
+      toggle.dataset.tooltip = label;
+      toggle.setAttribute("aria-pressed", String(revealed));
+      toggle.innerHTML = eyeIcon(revealed);
+    };
+    toggle.addEventListener("click", () => {
+      input.type = input.type === "password" ? "text" : "password";
+      update();
+      hideAppTooltip();
+    });
+    wrap.append(toggle);
+    update();
+  });
+}
+function setModalCloseHelpHidden(hidden) {
+  if (!currentUser) return;
+  userPreferences(currentUser).hideModalCloseHelp = hidden;
+  saveState();
+}
+function restoreModalCloseHelp() {
+  setModalCloseHelpHidden(false);
+  document
+    .querySelectorAll(".modal-close-help")
+    .forEach((node) => node.remove());
+  enhanceDialogs();
+  showToast("success", "راهنمای بستن پنجره دوباره فعال شد.");
+}
+function makeModalCloseHelp() {
+  const help = document.createElement("aside");
+  help.className = "modal-close-help full";
+  help.innerHTML = `<strong>راهنمای بستن پنجره</strong><p>برای بستن، ضربدر را بزنید، از کلید گریز (Esc) استفاده کنید یا روی فضای بیرون پنجره کلیک کنید. کشیدن ماوس از داخل به بیرون، پنجره را نمی‌بندد.</p><label class="checkbox-row"><input type="checkbox" data-dismiss-close-help>این راهنمای بستن دوباره نمایش داده نشود</label><small>بازنمایش از تنظیمات ← راهنماها امکان‌پذیر است.</small>`;
+  help
+    .querySelector("input")
+    .addEventListener("change", (event) =>
+      setModalCloseHelpHidden(event.target.checked),
+    );
+  return help;
+}
+let dialogScrollLocked = false,
+  previousBodyOverflow = "";
+function enhanceDialogs() {
+  const dialogs = [
+    ...document.querySelectorAll(
+      "#modalRoot .modal-box, #guideRoot .guide-dialog",
+    ),
+  ];
+  if (dialogs.length && !dialogScrollLocked) {
+    window.Pickers?.closeAll();
+    previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    dialogScrollLocked = true;
+  } else if (!dialogs.length && dialogScrollLocked) {
+    document.body.style.overflow = previousBodyOverflow;
+    dialogScrollLocked = false;
+  }
+  dialogs.forEach((dialog) => {
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    if (
+      !dialog.getAttribute("aria-label") &&
+      !dialog.getAttribute("aria-labelledby")
+    )
+      dialog.setAttribute(
+        "aria-label",
+        dialog.querySelector(".modal-title")?.textContent.trim() ||
+          "پنجرهٔ سامانه",
+      );
+    const close = dialog.querySelector(".modal-close");
+    if (close) {
+      close.type = "button";
+      if (!close.getAttribute("aria-label"))
+        close.setAttribute("aria-label", "بستن پنجره");
+      close.dataset.tooltip = close.getAttribute("aria-label");
+    }
+    if (
+      currentUser &&
+      !userPreferences(currentUser).hideModalCloseHelp &&
+      !dialog.querySelector(".modal-close-help")
+    ) {
+      const help = makeModalCloseHelp();
+      const body = dialog.querySelector(".modal-body");
+      if (body) body.prepend(help);
+      else dialog.querySelector("p")?.after(help);
+    }
+    if (!dialog.dataset.dialogReady) {
+      dialog.dataset.dialogReady = "true";
+      if (!dialog.contains(document.activeElement))
+        (close || dialog).focus({ preventScroll: true });
+    }
+  });
+}
+// بستن فقط وقتی فشار و رهاکردن اشاره‌گر هر دو روی همان پس‌زمینه باشد.
+let backdropPointer = null;
+document.addEventListener(
+  "pointerdown",
+  (event) => {
+    backdropPointer = null;
+    if (event.button !== 0 || event.pickerDismissed) return;
+    const overlay = event.target.closest?.(".modal-overlay, .guide-overlay");
+    if (overlay && event.target === overlay)
+      backdropPointer = {
+        overlay,
+        id: event.pointerId,
+        x: event.clientX,
+        y: event.clientY,
+        moved: false,
+      };
+  },
+  true,
+);
+document.addEventListener(
+  "pointermove",
+  (event) => {
+    if (
+      backdropPointer &&
+      event.pointerId === backdropPointer.id &&
+      Math.hypot(
+        event.clientX - backdropPointer.x,
+        event.clientY - backdropPointer.y,
+      ) > 8
+    )
+      backdropPointer.moved = true;
+  },
+  true,
+);
+document.addEventListener(
+  "pointerup",
+  (event) => {
+    const press = backdropPointer;
+    backdropPointer = null;
+    if (
+      !press ||
+      press.moved ||
+      event.pointerId !== press.id ||
+      event.target !== press.overlay ||
+      !press.overlay.isConnected
+    )
+      return;
+    hideAppTooltip();
+    if (press.overlay.classList.contains("guide-overlay")) requestCloseGuide();
+    else closeModal();
+  },
+  true,
+);
+document.addEventListener(
+  "pointercancel",
+  () => {
+    backdropPointer = null;
+  },
+  true,
+);
+function topDialog() {
+  return (
+    document.querySelector("#guideRoot .guide-dialog") ||
+    document.querySelector("#modalRoot .modal-box")
+  );
+}
+document.addEventListener(
+  "keydown",
+  (event) => {
+    const dialog = topDialog();
+    if (event.key === "Escape") {
+      hideAppTooltip();
+      if (!dialog) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (dialog.classList.contains("guide-dialog")) requestCloseGuide();
+      else closeModal();
+      return;
+    }
+    const tab = event.target.closest?.(".settings-tabs [role=tab]");
+    if (tab && ["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+      event.preventDefault();
+      const tabs = [...tab.parentElement.querySelectorAll("[role=tab]")],
+        i = tabs.indexOf(tab);
+      const next =
+        event.key === "Home"
+          ? 0
+          : event.key === "End"
+            ? tabs.length - 1
+            : (i + (event.key === "ArrowLeft" ? 1 : -1) + tabs.length) %
+              tabs.length;
+      selectSettingsTab(tabs[next].id.replace("settingsTab-", ""), true);
+    }
+    if (event.key === "Tab" && dialog) {
+      const items = [
+        ...dialog.querySelectorAll(
+          'button, input, select, textarea, a[href], [tabindex="0"]',
+        ),
+      ].filter(
+        (node) =>
+          !node.disabled && node.tabIndex >= 0 && node.getClientRects().length,
+      );
+      if (!items.length) {
+        event.preventDefault();
+        return;
+      }
+      const first = items[0],
+        last = items.at(-1);
+      if (
+        !dialog.contains(document.activeElement) ||
+        (!event.shiftKey && document.activeElement === last) ||
+        (event.shiftKey && document.activeElement === first)
+      ) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      }
+    }
+  },
+  true,
+);
+// پیام اعتبارسنجی فارسی، به‌جای متن بومیِ وابسته به زبان مرورگر.
+document.addEventListener(
+  "invalid",
+  (event) => {
+    event.preventDefault();
+    const input = event.target;
+    const name =
+      input.labels?.[0]?.textContent.trim() ||
+      input.getAttribute("aria-label") ||
+      "این مقدار";
+    const text = input.validity.valueMissing
+      ? `${name} را وارد کنید.`
+      : `${name} را با قالب و بازهٔ معتبر وارد کنید.`;
+    showToast("warning", text);
+    if (input.getClientRects().length) input.focus();
+  },
+  true,
+);
+const tooltip = document.createElement("div");
+tooltip.id = "appTooltip";
+tooltip.className = "app-tooltip";
+tooltip.setAttribute("role", "tooltip");
+tooltip.hidden = true;
+document.body.append(tooltip);
+let tooltipAnchor = null,
+  tooltipHadDescription = false,
+  tooltipDismissTimer = null;
+function hideAppTooltip() {
+  clearTimeout(tooltipDismissTimer);
+  if (tooltipAnchor && !tooltipHadDescription) {
+    const ids = (tooltipAnchor.getAttribute("aria-describedby") || "")
+      .split(/\s+/)
+      .filter((id) => id && id !== tooltip.id);
+    if (ids.length)
+      tooltipAnchor.setAttribute("aria-describedby", ids.join(" "));
+    else tooltipAnchor.removeAttribute("aria-describedby");
+  }
+  tooltip.hidden = true;
+  tooltipAnchor = null;
+}
+function showAppTooltip(anchor) {
+  if (!anchor?.dataset.tooltip || !anchor.getClientRects().length) return;
+  hideAppTooltip();
+  tooltipAnchor = anchor;
+  const ids = (anchor.getAttribute("aria-describedby") || "")
+    .split(/\s+/)
+    .filter(Boolean);
+  tooltipHadDescription = ids.includes(tooltip.id);
+  if (!tooltipHadDescription)
+    anchor.setAttribute("aria-describedby", [...ids, tooltip.id].join(" "));
+  tooltip.textContent = anchor.dataset.tooltip;
+  tooltip.dataset.kind = anchor.matches(".danger, .btn-delete")
+    ? "danger"
+    : anchor.getAttribute("aria-disabled") === "true"
+      ? "warning"
+      : "info";
+  tooltip.hidden = false;
+  const rect = anchor.getBoundingClientRect(),
+    width = tooltip.offsetWidth,
+    height = tooltip.offsetHeight;
+  tooltip.style.left = `${Math.max(8, Math.min(rect.left + rect.width / 2 - width / 2, innerWidth - width - 8))}px`;
+  tooltip.style.top = `${Math.max(8, rect.top - height - 10 >= 8 ? rect.top - height - 10 : Math.min(rect.bottom + 10, innerHeight - height - 8))}px`;
+}
+const TOOLTIP_TRANSLATIONS = {
+  "Zoom in": "بزرگ‌نمایی نقشه",
+  "Zoom out": "کوچک‌نمایی نقشه",
+  Marker: "نشانگر موقعیت",
+  Layers: "لایه‌های نقشه",
+  Close: "بستن",
+  Previous: "قبلی",
+  Next: "بعدی",
+};
+function enhanceTooltips() {
+  document.querySelectorAll("[title]").forEach((node) => {
+    const title = node.getAttribute("title");
+    if (title) node.dataset.tooltip = TOOLTIP_TRANSLATIONS[title] || title;
+    node.removeAttribute("title");
+  });
+  document
+    .querySelectorAll(
+      ".pk-input-trigger, .pk-nav, .password-toggle, .toast-close",
+    )
+    .forEach((node) => {
+      if (!node.dataset.tooltip && node.getAttribute("aria-label"))
+        node.dataset.tooltip = node.getAttribute("aria-label");
+    });
+}
+document.addEventListener("pointerover", (event) => {
+  if (tooltip.contains(event.target)) clearTimeout(tooltipDismissTimer);
+  const node = event.target.closest?.("[data-tooltip]");
+  if (node && !node.contains(event.relatedTarget)) showAppTooltip(node);
+});
+document.addEventListener("pointerout", (event) => {
+  if (
+    tooltipAnchor &&
+    !tooltipAnchor.contains(event.relatedTarget) &&
+    !tooltip.contains(event.relatedTarget)
+  ) {
+    clearTimeout(tooltipDismissTimer);
+    tooltipDismissTimer = setTimeout(hideAppTooltip, 150);
+  }
+});
+document.addEventListener("focusin", (event) => {
+  const node = event.target.closest?.("[data-tooltip]");
+  if (node) showAppTooltip(node);
+  else hideAppTooltip();
+});
+document.addEventListener("focusout", () => hideAppTooltip());
+window.addEventListener("resize", hideAppTooltip);
+document.addEventListener("scroll", hideAppTooltip, true);
+const uiObserver = new MutationObserver(() => {
+  enhancePasswordInputs();
+  enhanceDialogs();
+  enhanceTooltips();
+  if (tooltipAnchor && !tooltipAnchor.isConnected) hideAppTooltip();
+});
+uiObserver.observe(document.body, {
+  childList: true,
+  subtree: true,
+  attributes: true,
+  attributeFilter: ["title"],
+});
+enhancePasswordInputs();
+enhanceTooltips();
 
 bootLocalAccess();
