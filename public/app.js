@@ -308,136 +308,27 @@ const defaultCenters = [
 // فقط نیاز به تغییر همین چند تابع دارد، نه کل برنامه (توابع دیگر فقط load/save را صدا می‌زنند)
 // نسخهٔ قبلی پیش از مهاجرت پشتیبان می‌شود؛ رکوردهای موجود بازنویسی نمی‌شوند.
 function loadState() {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  let saved = null;
-  if (raw) {
-    try {
-      saved = JSON.parse(raw);
-    } catch {
-      localStorage.setItem(`${STORAGE_KEY}_corrupt_backup`, raw);
-    }
-    if (
-      saved &&
-      saved.schemaVersion !== 3 &&
-      !localStorage.getItem(`${STORAGE_KEY}_backup_before_v3`)
-    ) {
-      localStorage.setItem(`${STORAGE_KEY}_backup_before_v3`, raw);
-    }
-  }
-  if (!saved || typeof saved !== "object" || Array.isArray(saved)) saved = {};
-  const clone = (value) => JSON.parse(JSON.stringify(value));
-  const result = {
-    ...saved,
+  return {
     schemaVersion: 3,
-    vehicles: Array.isArray(saved.vehicles)
-      ? saved.vehicles
-      : clone(defaultVehicles),
-    samples: Array.isArray(saved.samples)
-      ? saved.samples
-      : clone(defaultSamples),
-    history: Array.isArray(saved.history)
-      ? saved.history
-      : clone(defaultHistory),
-    centers: Array.isArray(saved.centers)
-      ? saved.centers
-      : clone(defaultCenters),
-    users: Array.isArray(saved.users) ? saved.users : [],
+    vehicles: [],
+    samples: [],
+    history: [],
+    centers: [],
+    units: [],
+    usedUnits: [],
+    users: [],
+    nextSampleId: 1,
+    nextVehicleId: 1,
+    nextCenterId: 1,
+    nextUserId: 1,
   };
-  const normalizePlate = (value) =>
-    String(value || "")
-      .replace(/[۰-۹]/g, (ch) => "۰۱۲۳۴۵۶۷۸۹".indexOf(ch))
-      .replace(/\s/g, "");
-  let next = Math.max(0, ...result.vehicles.map((v) => Number(v.id) || 0)) + 1;
-  if (saved.schemaVersion !== 3)
-    defaultVehicles.forEach((vehicle) => {
-      if (
-        result.vehicles.some(
-          (v) => normalizePlate(v.plate) === normalizePlate(vehicle.plate),
-        )
-      )
-        return;
-      const id = result.vehicles.some((v) => v.id === vehicle.id)
-        ? next++
-        : vehicle.id;
-      result.vehicles.push({ ...vehicle, id });
-      next = Math.max(next, id + 1);
-    });
-  result.units = [
-    ...new Set(
-      [
-        ...(saved.schemaVersion === 3 && Array.isArray(saved.units)
-          ? []
-          : defaultUnits),
-        ...(Array.isArray(saved.units) ? saved.units : []),
-        ...result.samples.map((x) => x.unit),
-        ...result.history.map((x) => x.unit),
-      ]
-        .filter((x) => typeof x === "string" && x.trim())
-        .map((x) => x.trim()),
-    ),
-  ];
-  result.usedUnits = [
-    ...new Set(
-      [
-        ...(Array.isArray(saved.usedUnits) ? saved.usedUnits : []),
-        ...result.samples.map((record) => record.unit),
-        ...result.history.map((record) => record.unit),
-      ]
-        .filter((unit) => typeof unit === "string" && unit.trim())
-        .map((unit) => unit.trim()),
-    ),
-  ];
-  result.nextVehicleId = Math.max(Number(saved.nextVehicleId) || 1, next);
-  result.nextSampleId = Math.max(
-    Number(saved.nextSampleId) || 104,
-    ...result.samples.map((x) => (Number(x.id) || 0) + 1),
-  );
-  result.nextCenterId = Math.max(
-    Number(saved.nextCenterId) || 1,
-    ...result.centers.map((x) => (Number(x.id) || 0) + 1),
-  );
-  result.nextUserId = Math.max(
-    Number(saved.nextUserId) || 1,
-    ...result.users.map((x) => (Number(x.id) || 0) + 1),
-  );
-  result.history.forEach((record) => {
-    if (!record.carId)
-      record.carId =
-        result.vehicles.find((v) => v.name === record.carName)?.id || null;
-  });
-  return result;
 }
 
 function saveState() {
-  usedRequesterUnits = [
-    ...new Set(
-      [
-        ...usedRequesterUnits,
-        ...samples.map((record) => record.unit),
-        ...history.map((record) => record.unit),
-      ]
-        .filter((unit) => typeof unit === "string" && unit.trim())
-        .map((unit) => unit.trim()),
-    ),
-  ];
-  localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify({
-      ...state,
-      schemaVersion: 3,
-      vehicles,
-      samples,
-      nextSampleId,
-      nextVehicleId,
-      history,
-      centers,
-      nextCenterId,
-      units: requesterUnits,
-      usedUnits: usedRequesterUnits,
-      users: appUsers,
-      nextUserId,
-    }),
-  );
+  if (currentUser)
+    queueServerPreferences(
+      JSON.parse(JSON.stringify(userPreferences(currentUser))),
+    );
 }
 
 const state = loadState();
@@ -713,7 +604,7 @@ function renderCars() {
                    return `<li class="sample-item" style="border-right: 3px solid ${statusColor}">
                    <div class="sample-info">
                      <span style="font-size:.8rem">${statusIcon}</span>
-                     <span class="sample-route">${s.origin} ← ${s.destination}</span>
+                     <span class="sample-route">${esc(s.origin)} ← ${esc(s.destination)}</span>
                    </div>
                    <span class="sample-time">${esc(s.time)}</span>
                    <button class="btn-delete" onclick="deleteSample(${s.id})" title="حذف"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
@@ -735,7 +626,13 @@ function renderCarSelect() {
   const prev = sel.value;
   sel.innerHTML = getCarsWithSamples()
     .map((car) => {
-      const remaining = Math.max(capacityOf(car) - car.samples.length, 0);
+      const remaining = Math.max(
+        capacityOf(car) -
+          (serverCapacityUsage.find(
+            (x) => x.carId === car.id && x.date === todayStr(),
+          )?.used || 0),
+        0,
+      );
       const label =
         remaining === 0
           ? "ظرفیت تکمیل است"
@@ -815,78 +712,17 @@ const DASH_ICONS = {
 };
 
 function getDashboardData() {
-  const vehicleIdByName = Object.fromEntries(
-    vehicles.map((v) => [v.name, v.id]),
-  );
-
-  // «ماموریت» = سفر انجام‌شده (تاریخچه ۷ روز اخیر) + سفر جاری امروز که هنوز تحویل نشده
-  // (سفرهای تحویل‌شده امروز قبلاً در تاریخچه ثبت شده‌اند و دوباره شمرده نمی‌شوند)
-  const missions = [
-    ...history.map((h) => ({
-      carId: h.carId ?? vehicleIdByName[h.carName],
-      unit: h.unit,
-      origin: h.origin,
-      destination: h.destination,
-    })),
-    ...todaySamples()
-      .filter((s) => s.status !== "delivered")
-      .map((s) => ({
-        carId: s.carId,
-        unit: s.unit,
-        origin: s.origin,
-        destination: s.destination,
-      })),
-  ];
-
-  const count = (keys) => {
-    const m = new Map();
-    keys.forEach((k) => {
-      if (k) m.set(k, (m.get(k) || 0) + 1);
-    });
-    return m;
+  return {
+    ...serverDashboard,
+    readyCars: getCarsWithSamples()
+      .filter((c) => c.status === "ok")
+      .map((car) => ({
+        car,
+        idx: vehicles.findIndex((v) => v.id === car.id),
+        remaining: Math.max(capacityOf(car) - car.samples.length, 0),
+      }))
+      .sort((a, b) => b.remaining - a.remaining),
   };
-  const top = (m) =>
-    [...m.entries()]
-      .sort(
-        (a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), "fa"),
-      )
-      .slice(0, DASH_TOP_N);
-
-  const activeIds = new Set(
-    vehicles.filter((v) => v.status === "ok").map((v) => v.id),
-  );
-  const topVehicles = top(
-    count(missions.map((m) => m.carId).filter((id) => activeIds.has(id))),
-  ).map(([id, value]) => ({
-    label: vehicles.find((v) => v.id === id).name,
-    value,
-  }));
-  const topUnits = top(count(missions.map((m) => m.unit))).map(
-    ([label, value]) => ({ label, value }),
-  );
-  const topCenters = top(
-    count(missions.flatMap((m) => [m.origin, m.destination])),
-  ).map(([label, value]) => ({ label, value }));
-
-  // درخواست‌های موفق (تحویل‌شده) در RECENT_DAYS روز گذشته، به تفکیک روز
-  const days = [];
-  for (let i = RECENT_DAYS - 1; i >= 0; i--) {
-    const date = dateOffset(i);
-    days.push({ date, value: history.filter((h) => h.date === date).length });
-  }
-  const recentTotal = days.reduce((sum, d) => sum + d.value, 0);
-
-  // خودروهای آماده به کار امروز: وضعیت «آماده به کار»، به‌ترتیب بیشترین ظرفیت باقی‌مانده
-  const readyCars = getCarsWithSamples()
-    .filter((c) => c.status === "ok")
-    .map((car) => ({
-      car,
-      idx: vehicles.findIndex((v) => v.id === car.id),
-      remaining: Math.max(capacityOf(car) - car.samples.length, 0),
-    }))
-    .sort((a, b) => b.remaining - a.remaining);
-
-  return { topVehicles, topUnits, topCenters, days, recentTotal, readyCars };
 }
 
 function dashBoxHead(title, sub, icon) {
@@ -1037,7 +873,7 @@ function renderRequests() {
           <td class="req-route">${esc(s.origin)} ← ${esc(s.destination)}${s.unit ? `<div class="req-unit">${esc(s.unit)}</div>` : ""}</td>
           <td><span class="time-chip">${esc(s.time)}</span></td>
           <td><span class="badge ${stInfo[1]}">${stInfo[0]}</span></td>
-          <td><span class="req-car"><span class="legend-dot" style="background:${color}"></span>${car ? car.name : "—"}</span></td>
+          <td><span class="req-car"><span class="legend-dot" style="background:${color}"></span>${car ? esc(car.name) : "—"}</span></td>
                     <td><span class="req-actions">
             ${canDeliverSample(s) && s.status !== "delivered" ? `<button class="icon-btn success" title="ثبت تحویل" onclick="deliverSample(${s.id})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg></button>` : ""}
             ${canDeleteSample(s) ? `<button class="icon-btn danger" title="حذف" onclick="deleteSample(${s.id})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>` : ""}
@@ -1088,42 +924,18 @@ function applyHistoryFilter() {
 }
 
 // ─── Actions ───
-function deleteSample(sampleId) {
-  const idx = samples.findIndex((s) => s.id === sampleId);
-  if (idx === -1 || !canDeleteSample(samples[idx])) {
-    showToast("error", "اجازهٔ حذف این درخواست را ندارید.");
-    return;
-  }
-  samples.splice(idx, 1);
-  saveState();
-  render();
+async function deleteSample(id) {
+  const r = samples.find((x) => x.id === id);
+  if (!r) return;
+  await serverWrite("requests/" + id, "DELETE", { version: r.version });
 }
 
-function deliverSample(sampleId) {
-  const s = samples.find((x) => x.id === sampleId);
-  if (!s || !canDeliverSample(s) || s.status === "delivered") {
-    showToast("error", "این مأموریت قابل ثبت تحویل نیست.");
-    return;
-  }
-  s.status = "delivered";
-  s.progress = "delivered";
-  s.deliveredAt = new Date().toISOString();
-  const car = getCarsWithSamples().find((c) => c.id === s.carId);
-  history.unshift({
-    id: Date.now(),
-    date: todayStr(),
-    carId: s.carId,
-    requesterUserId: s.requesterUserId || null,
-    sampleId: s.id,
-    deliveredAt: s.deliveredAt,
-    carName: car ? car.name : "—",
-    unit: s.unit,
-    origin: s.origin,
-    destination: s.destination,
-    time: s.time,
+async function deliverSample(id) {
+  const r = samples.find((x) => x.id === id);
+  if (!r) return;
+  await serverWrite("requests/" + id + "/deliver", "POST", {
+    version: r.version,
   });
-  saveState();
-  render();
 }
 
 function addSample() {
@@ -1182,7 +994,8 @@ function buildRouteOptions({
 }) {
   const reqDate = date || todayStr();
   const loadOn = (car) =>
-    samples.filter((s) => s.carId === car.id && s.date === reqDate).length;
+    serverCapacityUsage.find((x) => x.carId === car.id && x.date === reqDate)
+      ?.used || 0;
   const locMap = Object.fromEntries(centers.map((c) => [c.name, c]));
   const nO = locMap[origin],
     nD = locMap[destination];
@@ -1385,7 +1198,7 @@ function renderRouteOptionsModal() {
                 </div>
                 <div class="route-option-desc">${esc(opt.desc)}</div>
                 <div class="route-option-meta">
-                  <span>🚙 ${esc(car.name)} — ${esc(car.plate)}<span>📦 ${faNum(Math.max(capacityOf(car) - samples.filter((x) => x.carId === car.id && x.date === (pendingRequest.date || todayStr())).length, 0))} ظرفیت باقی‌مانده آن روز</span>
+                  <span>🚙 ${esc(car.name)} — ${esc(car.plate)}<span>📦 ${faNum(Math.max(capacityOf(car) - (serverCapacityUsage.find((x) => x.carId === car.id && x.date === (pendingRequest.date || todayStr()))?.used || 0), 0))} ظرفیت باقی‌مانده آن روز</span>
                   ${opt.type === "cluster" ? `<span>⏱ اختلاف ${opt.timeDiff} دقیقه</span>` : ""}
                   ${opt.distKm ? `<span>📏 ${opt.distKm} کیلومتر</span>` : ""}
                   ${opt.estMin ? `<span>⏳ تقریباً ${opt.estMin} دقیقه</span>` : ""}
@@ -1425,60 +1238,25 @@ function selectRouteOption(i) {
   updateOptionMap();
 }
 
-function confirmRouteOption() {
-  if (!requireAccess("requests.create")) return;
-  const opt = pendingOptions[selectedOptionIdx];
-  if (
-    !pendingRequest ||
-    !opt ||
-    !buildRouteOptions(pendingRequest).some(
-      (item) => item.carId === opt.carId && item.type === opt.type,
-    )
-  ) {
-    showToast(
-      "error",
-      "وضعیت خودرو تغییر کرده است؛ پیشنهادها را دوباره بررسی کنید.",
-    );
-    return;
-  }
-  if (
-    currentUser.role === "requester" &&
-    pendingRequest.requesterUserId !== currentUser.id
-  )
-    return;
-  if (!rememberUnit(pendingRequest.unit)) {
-    showToast("error", "نام واحد معتبر نیست.");
-    return;
-  }
-  const newSample = {
-    id: nextSampleId++,
-    carId: opt.carId,
-    unit: pendingRequest.unit,
-    origin: pendingRequest.origin,
-    destination: pendingRequest.destination,
-    time: pendingRequest.time,
-    date: pendingRequest.date || todayStr(),
-    status: "pending",
-    progress: "scheduled",
-    requesterUserId: currentUser.id,
-  };
-  samples.push(newSample);
-  saveState();
-  closeModal();
-
-  const alertEl = document.getElementById("formAlert");
-  alertEl.innerHTML = `<div class="alert alert-success">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-    نمونه با موفقیت ثبت شد ${opt.type === "cluster" ? "(ترکیب‌شده با سفر دیگر)" : ""}.
-  </div>`;
-  document.getElementById("origin").value = "";
-  document.getElementById("destination").value = "";
-  document.getElementById("unitInput").value = "";
-  document.getElementById("timeInput").value = "";
-  setTimeout(() => {
-    alertEl.innerHTML = "";
-  }, 5000);
-  render();
+async function confirmRouteOption() {
+  if (!pendingRequest) return;
+  const option = pendingOptions[selectedOptionIdx];
+  if (!option) return;
+  pendingRequest.operationKey ||= crypto.randomUUID();
+  await serverWrite(
+    "requests",
+    "POST",
+    {
+      origin: pendingRequest.origin,
+      destination: pendingRequest.destination,
+      unit: pendingRequest.unit,
+      date: pendingRequest.date,
+      time: pendingRequest.time,
+      carId: option.carId,
+    },
+    true,
+    pendingRequest.operationKey,
+  );
 }
 
 function closeModal() {
@@ -1495,53 +1273,24 @@ function closeModal() {
 }
 
 // ─── مدیریت بحران خودرو ───
-function handleCarEmergency(carId) {
-  if (!requireAccess("fleet.write")) return;
-  const vehicle = vehicles.find((v) => v.id === carId);
-  const pending = samples.filter(
-    (s) => s.carId === carId && s.status !== "delivered",
-  );
-  if (!vehicle || !pending.length) {
-    showToast("error", "مأموریت بازی برای انتقال وجود ندارد.");
-    return;
-  }
+function handleCarEmergency(id) {
+  const v = vehicles.find((x) => x.id === id);
+  if (!v) return;
   openLocalConfirm(
     "انتقال مأموریت‌ها",
-    `مأموریت‌های باز خودرو «${vehicle.name}» با کنترل ظرفیت و شیفت به خودروهای دیگر منتقل شوند؟`,
-    () => {
-      if (!requireAccess("fleet.write")) return;
-      let moved = 0;
-      pending.forEach((sample) => {
-        const target = vehicles
-          .filter(
-            (v) =>
-              v.id !== carId &&
-              v.status === "ok" &&
-              isWithinShift(v, sample.time) &&
-              samples.filter((s) => s.carId === v.id && s.date === sample.date)
-                .length < capacityOf(v),
-          )
-          .sort(
-            (a, b) =>
-              samples.filter((s) => s.carId === a.id && s.date === sample.date)
-                .length /
-                capacityOf(a) -
-              samples.filter((s) => s.carId === b.id && s.date === sample.date)
-                .length /
-                capacityOf(b),
-          )[0];
-        if (target) {
-          sample.carId = target.id;
-          moved++;
-        }
-      });
-      saveState();
-      closeModal();
-      render();
-      showToast(
-        moved === pending.length ? "success" : "warning",
-        `${faNum(moved)} از ${faNum(pending.length)} مأموریت منتقل شد.`,
+    "مأموریت‌های باز با کنترل ظرفیت و شیفت به خودروهای دیگر منتقل شوند؟",
+    async () => {
+      const r = await serverWrite(
+        "vehicles/" + id + "/emergency",
+        "POST",
+        { version: v.version },
+        true,
       );
+      if (r)
+        showToast(
+          r.moved === r.total ? "success" : "warning",
+          `${faNum(r.moved)} از ${faNum(r.total)} مأموریت منتقل شد.`,
+        );
     },
   );
 }
@@ -1557,7 +1306,7 @@ function getAlerts() {
     )
       alerts.push({
         icon: "⏰",
-        text: `تاخیر: ${esc(s.origin)} ← ${esc(s.destination)} (ساعت ${s.time})`,
+        text: `تاخیر: ${s.origin} ← ${s.destination} (ساعت ${s.time})`,
       });
   });
   getCarsWithSamples().forEach((c) => {
@@ -1589,7 +1338,7 @@ function openAlertsModal() {
       <div class="modal-body">${
         alerts.length === 0
           ? '<div class="empty-state">اعلانی وجود ندارد ✔</div>'
-          : `<div class="alert-list">${alerts.map((a) => `<div class="alert-item">${a.icon} ${a.text}</div>`).join("")}</div>`
+          : `<div class="alert-list">${alerts.map((a) => `<div class="alert-item">${a.icon} ${esc(a.text)}</div>`).join("")}</div>`
       }</div>
     </div></div>`;
 }
@@ -1779,37 +1528,15 @@ function clearDraft() {
   }
 }
 
-function saveCenter() {
-  if (!requireAccess("centers.write")) return;
-  const nameEl = document.getElementById("centerName");
-  const alertEl = document.getElementById("centerAlert");
-  const name = nameEl.value.trim();
-  if (!name || name.length > 100) {
-    showAlert(alertEl, "err", "نام مرکز را وارد کنید؛ حداکثر ۱۰۰ نویسه.");
-    return;
-  }
-  if (centers.some((c) => c.name === name)) {
-    showAlert(alertEl, "err", "مرکزی با این نام قبلاً ثبت شده است.");
-    return;
-  }
-  const position = hasCenterCoordinates(draftPoint)
-    ? {
-        lat: Number(draftPoint.lat.toFixed(6)),
-        lng: Number(draftPoint.lng.toFixed(6)),
-      }
+async function saveCenter() {
+  const name = document.getElementById("centerName").value.trim();
+  const point = hasCenterCoordinates(draftPoint)
+    ? { lat: draftPoint.lat, lng: draftPoint.lng }
     : { lat: null, lng: null };
-  centers.push({ id: nextCenterId++, name, ...position });
-  saveState();
-  clearDraft();
-  nameEl.value = "";
-  showAlert(
-    alertEl,
-    "ok",
-    `مرکز «${name}» ثبت شد${position.lat === null ? "؛ موقعیت آن روی نقشه هنوز ثبت نشده است" : ""}.`,
-  );
-  showToast("success", "مرکز جدید به فهرست مبدأ و مقصد اضافه شد.");
-  setTimeout(() => alertEl.replaceChildren(), 6000);
-  render();
+  if (await serverWrite("centers", "POST", { name, ...point })) {
+    clearDraft();
+    document.getElementById("centerName").value = "";
+  }
 }
 
 function renderCentersList() {
@@ -1880,53 +1607,26 @@ function openCenterRenameModal(id) {
   document.getElementById("cr_name").focus();
 }
 
-function saveCenterRename(id) {
-  if (!requireAccess("centers.write")) return;
-  const c = centers.find((x) => x.id === id);
-  if (!c) return;
-  const name = document.getElementById("cr_name").value.trim();
-  const alertEl = document.getElementById("cr_alert");
-  if (!name) {
-    showAlert(alertEl, "err", "نام مرکز نمی‌تواند خالی باشد.");
-    return;
-  }
-  if (centers.some((x) => x.id !== id && x.name === name)) {
-    showAlert(alertEl, "err", "مرکزی با این نام قبلاً ثبت شده است.");
-    return;
-  }
-  const oldName = c.name;
-  c.name = name;
-  // درخواست‌ها و تاریخچه مرکز را با نام نگه می‌دارند؛ نام جدید در آن‌ها هم اعمال شود
-  [...samples, ...history].forEach((x) => {
-    if (x.origin === oldName) x.origin = name;
-    if (x.destination === oldName) x.destination = name;
-  });
-  saveState();
-  closeModal();
-  render();
+async function saveCenterRename(id) {
+  const r = centers.find((x) => x.id === id);
+  if (r)
+    await serverWrite(
+      "centers/" + id,
+      "PUT",
+      {
+        name: document.getElementById("cr_name").value.trim(),
+        version: r.version,
+      },
+      true,
+    );
 }
 
 function deleteCenter(id) {
-  if (!requireAccess("centers.write")) return;
-  const center = centers.find((c) => c.id === id);
-  if (!center) return;
-  if (
-    samples.some(
-      (s) =>
-        s.status !== "delivered" &&
-        (s.origin === center.name || s.destination === center.name),
-    )
-  ) {
-    showToast("error", "این مرکز در مأموریت‌های باز استفاده می‌شود.");
-    return;
-  }
-  openLocalConfirm("حذف مرکز", `مرکز «${center.name}» حذف شود؟`, () => {
-    if (!requireAccess("centers.write")) return;
-    centers = centers.filter((c) => c.id !== id);
-    saveState();
-    closeModal();
-    render();
-  });
+  const r = centers.find((x) => x.id === id);
+  if (r)
+    openLocalConfirm("حذف مرکز", `مرکز «${r.name}» حذف شود؟`, () =>
+      serverWrite("centers/" + id, "DELETE", { version: r.version }, true),
+    );
 }
 
 // ─── نقشه سفر اشتراکی (داخل پنجره پیشنهاد مسیر) ───
@@ -2317,111 +2017,52 @@ function toggleContractorField() {
     ownership === "contractor" ? "flex" : "none";
 }
 
-function saveVehicleForm(vehicleId) {
-  if (!requireAccess("fleet.write")) return;
-  if (
-    vehicleId != null &&
-    (!vehicles.some((v) => v.id === vehicleId) ||
-      vehicleHasOpenMission(vehicleId))
-  ) {
-    showToast(
-      "warning",
-      "وضعیت خودرو تغییر کرده است؛ خودروی حذف‌شده یا دارای درخواست باز قابل ویرایش نیست.",
-    );
+async function saveVehicleForm(id) {
+  const is24 = document.getElementById("vf_is24h").checked;
+  const start = vehicleShiftPickers?.start.getValue(),
+    end = vehicleShiftPickers?.end.getValue();
+  if (!is24 && (!start || !end)) {
+    showToast("error", "شیفت معتبر وارد کنید.");
     return;
   }
-  const name = document.getElementById("vf_name").value.trim();
-  const plate = document.getElementById("vf_plate").value.trim();
-  if (!name || !plate) {
-    showToast("error", "لطفاً نام و پلاک خودرو را وارد کنید.");
-    return;
-  }
-
-  const is24h = document.getElementById("vf_is24h").checked;
+  const fmt = (x) =>
+    `${String(x.h).padStart(2, "0")}:${String(x.m).padStart(2, "0")}`;
+  const val = (k) => document.getElementById("vf_" + k).value;
   const hasFridge = document.getElementById("vf_hasFridge").checked;
-  const startValue = is24h ? null : vehicleShiftPickers?.start.getValue();
-  const endValue = is24h ? null : vehicleShiftPickers?.end.getValue();
-  if (!is24h && (!startValue || !endValue)) {
-    showToast("error", "شروع و پایان شیفت را با ساعت معتبر وارد کنید.");
-    return;
-  }
-  const formatShift = (value) =>
-    `${String(value.h).padStart(2, "0")}:${String(value.m).padStart(2, "0")}`;
-  const shiftStart = is24h ? null : formatShift(startValue);
-  const shiftEnd = is24h ? null : formatShift(endValue);
-  if (!is24h && shiftStart === shiftEnd) {
-    showToast(
-      "error",
-      "شروع و پایان شیفت یکسان است؛ برای فعالیت تمام‌روز گزینهٔ ۲۴ ساعته را فعال کنید.",
-    );
-    return;
-  }
-
-  const data = {
-    name,
-    plate,
-    bodyType: document.getElementById("vf_bodyType").value,
-    serviceType: document.getElementById("vf_serviceType").value,
-    passengerCapacity:
-      parseInt(document.getElementById("vf_passengerCapacity").value) || 0,
-    cargoCapacity:
-      parseInt(document.getElementById("vf_cargoCapacity").value) || 0,
+  const b = {
+    name: val("name").trim(),
+    plate: val("plate").trim(),
+    bodyType: val("bodyType"),
+    serviceType: val("serviceType"),
+    passengerCapacity: Number(val("passengerCapacity")),
+    cargoCapacity: Number(val("cargoCapacity")),
     hasFridge,
-    fridgeCapacity: hasFridge
-      ? parseInt(document.getElementById("vf_fridgeCapacity").value) || 0
-      : 0,
-    shiftStart,
-    shiftEnd,
-    status: document.getElementById("vf_status").value,
-    ownership: document.getElementById("vf_ownership").value,
+    fridgeCapacity: hasFridge ? Number(val("fridgeCapacity")) : 0,
+    shiftStart: is24 ? null : fmt(start),
+    shiftEnd: is24 ? null : fmt(end),
+    status: val("status"),
+    ownership: val("ownership"),
     contractorName:
-      document.getElementById("vf_ownership").value === "contractor"
-        ? document.getElementById("vf_contractorName").value.trim()
-        : "",
+      val("ownership") === "contractor" ? val("contractorName").trim() : "",
   };
-
-  if (vehicleId != null) {
-    const idx = vehicles.findIndex((v) => v.id === vehicleId);
-    vehicles[idx] = { ...vehicles[idx], ...data };
-  } else {
-    vehicles.push({ id: nextVehicleId++, ...data });
-  }
-
-  saveState();
-  closeModal();
-  render();
+  if (id) b.version = vehicles.find((x) => x.id === id)?.version;
+  await serverWrite(
+    "vehicles" + (id ? "/" + id : ""),
+    id ? "PUT" : "POST",
+    b,
+    true,
+  );
 }
 
-function deleteVehicle(vehicleId) {
-  if (!requireAccess("fleet.write")) return;
-  const vehicle = vehicles.find((v) => v.id === vehicleId);
-  if (!vehicle) return;
-  if (
-    samples.some(
-      (item) => item.carId === vehicleId && item.status !== "delivered",
-    ) ||
-    appUsers.some(
-      (u) =>
-        u.active && u.role === "driver" && u.vehicleIds?.includes(vehicleId),
-    )
-  ) {
-    showToast(
-      "error",
-      "خودرو مأموریت باز یا رانندهٔ فعال دارد؛ ابتدا آن‌ها را جابه‌جا کنید.",
+function deleteVehicle(id) {
+  const r = vehicles.find((x) => x.id === id);
+  if (r)
+    openLocalConfirm(
+      "حذف خودرو",
+      `خودرو «${r.name}» حذف شود؟ سوابق حفظ می‌شوند.`,
+      () =>
+        serverWrite("vehicles/" + id, "DELETE", { version: r.version }, true),
     );
-    return;
-  }
-  openLocalConfirm(
-    "حذف خودرو",
-    `آیا خودرو «${vehicle.name}» حذف شود؟ سوابق حفظ می‌شوند.`,
-    () => {
-      if (!requireAccess("fleet.write")) return;
-      vehicles = vehicles.filter((v) => v.id !== vehicleId);
-      saveState();
-      closeModal();
-      render();
-    },
-  );
 }
 
 // ─── ابزار تاریخ جلالی (الگوریتم استاندارد jalaali-js) ───
@@ -2683,17 +2324,12 @@ function isFleetManager() {
   return canAccess("requests.manage");
 }
 function canSeeSample(record) {
-  if (!currentUser) return false;
-  if (isFleetManager()) return true;
-  if (currentUser.role === "requester")
-    return record.requesterUserId === currentUser.id;
-  if (currentUser.role === "driver")
-    return currentUser.vehicleIds?.includes(record.carId) || false;
-  return false;
+  return !!currentUser;
 }
 function canDeleteSample(record) {
   return (
     !!record &&
+    record.status !== "delivered" &&
     (isFleetManager() ||
       (canAccess("requests.own") &&
         record.requesterUserId === currentUser.id &&
@@ -2773,184 +2409,52 @@ const bytesToHex = (buffer) =>
 function hexToBytes(text) {
   return new Uint8Array(text.match(/../g).map((x) => parseInt(x, 16)));
 }
-async function passwordDigest(password, salt) {
-  if (!crypto.subtle)
-    throw new Error(
-      "ورود به HTTPS یا localhost نیاز دارد؛ ذخیرهٔ رمز ناامن انجام نمی‌شود.",
-    );
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(password),
-    "PBKDF2",
-    false,
-    ["deriveBits"],
-  );
-  const bits = await crypto.subtle.deriveBits(
-    {
-      name: "PBKDF2",
-      hash: "SHA-256",
-      salt: hexToBytes(salt),
-      iterations: PASSWORD_ITERATIONS,
-    },
-    key,
-    256,
-  );
-  return bytesToHex(bits);
-}
-async function newPasswordRecord(password) {
-  const salt = bytesToHex(crypto.getRandomValues(new Uint8Array(16)));
-  return {
-    salt,
-    passwordHash: await passwordDigest(password, salt),
-    passwordIterations: PASSWORD_ITERATIONS,
-  };
-}
-async function verifyPassword(user, password) {
-  if (!user.salt || !user.passwordHash) return false;
-  const digest = await passwordDigest(password, user.salt);
-  if (digest.length !== user.passwordHash.length) return false;
-  let diff = 0;
-  for (let i = 0; i < digest.length; i++)
-    diff |= digest.charCodeAt(i) ^ user.passwordHash.charCodeAt(i);
-  return diff === 0;
-}
+
 function userPreferences(user) {
-  return (
-    user.preferences ||
-    (user.preferences = { theme: null, dismissedGuides: [] })
-  );
+  if (!user.preferences)
+    user.preferences = {
+      theme: null,
+      dismissedGuides: [],
+      hideModalCloseHelp: false,
+    };
+  return user.preferences;
 }
-function writeSession() {
-  sessionStorage.setItem(
-    SESSION_KEY,
-    JSON.stringify({
-      userId: currentUser.id,
-      expiresAt: sessionExpiresAt,
-      version: currentUser.authVersion || 1,
-    }),
-  );
-}
-async function seedLocalUsers() {
-  if (appUsers.length) return;
-  const seed = [
-    {
-      username: "admin",
-      name: "مدیر سیستم",
-      role: "admin",
-      password: "DemoAdmin@1405",
-    },
-    {
-      username: "fleet",
-      name: "مسئول ناوگان",
-      role: "dispatcher",
-      password: "DemoFleet@1405",
-    },
-    {
-      username: "requester",
-      name: "درخواست‌کننده",
-      role: "requester",
-      unit: "امور اداری",
-      password: "DemoRequest@1405",
-    },
-  ];
-  defaultVehicles.forEach((vehicle, index) => {
-    const normalize = (v) =>
-      String(v)
-        .replace(/[۰-۹]/g, (d) => "۰۱۲۳۴۵۶۷۸۹".indexOf(d))
-        .replace(/\s/g, "");
-    const actual = vehicles.find(
-      (v) => normalize(v.plate) === normalize(vehicle.plate),
-    );
-    seed.push({
-      username: `driver${index + 1}`,
-      name: `رانندهٔ ${vehicle.name}`,
-      role: "driver",
-      vehicleIds: actual ? [actual.id] : [],
-      password: "DemoDriver@1405",
-    });
-  });
-  const created = [];
-  for (const item of seed) {
-    const { password, ...data } = item;
-    created.push({
-      ...data,
-      id: nextUserId++,
-      active: true,
-      authVersion: 1,
-      preferences: { theme: null, dismissedGuides: [] },
-      ...(await newPasswordRecord(password)),
-    });
-  }
-  appUsers = created;
-  saveState();
-}
+function writeSession() {}
+
 async function bootLocalAccess() {
   applyTheme(localStorage.getItem(THEME_KEY) || "system");
   try {
-    await seedLocalUsers();
-    saveState();
-    let savedSession = null;
-    try {
-      savedSession = JSON.parse(sessionStorage.getItem(SESSION_KEY) || "null");
-    } catch {
-      sessionStorage.removeItem(SESSION_KEY);
-    }
-    const user = appUsers.find(
-      (u) => u.id === savedSession?.userId && u.active,
-    );
-    if (
-      user &&
-      savedSession.expiresAt > Date.now() &&
-      savedSession.version === (user.authVersion || 1)
-    ) {
-      currentUser = user;
-      sessionExpiresAt = savedSession.expiresAt;
-      enterLocalApp();
-    } else {
-      sessionStorage.removeItem(SESSION_KEY);
-      render();
-    }
-    document.getElementById("loginSubmit").disabled = false;
-    document.getElementById("loginStatus").textContent =
-      "برای ادامه، وارد حساب خود شوید.";
-  } catch (error) {
-    document.getElementById("loginStatus").textContent =
-      error.message || "آماده‌سازی ورود انجام نشد.";
-    showToast(
-      "error",
-      "ورود آماده نشد؛ فضای ذخیره‌سازی و اتصال امن را بررسی کنید.",
-    );
+    await refreshServerState();
+    enterLocalApp();
+  } catch (e) {
+    if (e.status !== 401) showToast("error", e.message);
+    lockServerView();
   }
+  document.getElementById("loginSubmit").disabled = false;
+  document.getElementById("loginStatus").textContent =
+    "برای ادامه، وارد حساب خود شوید.";
 }
 async function loginLocal(event) {
   event.preventDefault();
-  const submit = document.getElementById("loginSubmit");
-  submit.disabled = true;
-  const username = document
-    .getElementById("loginUsername")
-    .value.trim()
-    .toLowerCase();
-  const password = document.getElementById("loginPassword").value;
+  const button = document.getElementById("loginSubmit");
+  button.disabled = true;
   try {
-    const user = appUsers.find((u) => u.active && u.username === username);
-    if (!user || !(await verifyPassword(user, password))) {
-      document.getElementById("loginError").textContent =
-        "نام کاربری یا رمز عبور درست نیست.";
-      return;
-    }
-    document.getElementById("loginError").textContent = "";
+    await apiRequest("login", "POST", {
+      username: document
+        .getElementById("loginUsername")
+        .value.trim()
+        .toLowerCase(),
+      password: document.getElementById("loginPassword").value,
+    });
     document.getElementById("loginPassword").value = "";
-    currentUser = user;
-    sessionExpiresAt = Date.now() + 8 * 60 * 60 * 1000;
-    writeSession();
+    await refreshServerState();
     shownGuides.clear();
     enterLocalApp();
-    showToast("success", `خوش آمدید؛ نقش شما «${ROLE_LABELS[user.role]}» است.`);
-  } catch {
-    document.getElementById("loginError").textContent =
-      "ورود انجام نشد؛ ذخیره‌سازی و HTTPS را بررسی کنید.";
+    document.getElementById("loginError").textContent = "";
+  } catch (e) {
+    document.getElementById("loginError").textContent = e.message;
   } finally {
-    submit.disabled = false;
+    button.disabled = false;
   }
 }
 function enterLocalApp() {
@@ -2966,19 +2470,16 @@ function enterLocalApp() {
   render();
   switchTab(currentTab);
 }
-function logoutLocal(message = "از حساب خارج شدید.") {
-  closeModal();
-  closeGuide();
-  currentUser = null;
-  sessionExpiresAt = 0;
-  sessionStorage.removeItem(SESSION_KEY);
-  document.getElementById("loginPassword").value = "";
-  document.getElementById("unitInput").value = "";
-  window._datePicker?.setValue(todayStr());
-  window._timePicker?.setValue(8, 0);
-  document.getElementById("formAlert").replaceChildren();
-  render();
-  document.getElementById("loginUsername").focus();
+async function logoutLocal(message = "از حساب خارج شدید.") {
+  try {
+    await apiRequest("logout", "POST", {});
+  } catch (e) {
+    if (e.status !== 401) {
+      showToast("error", e.message);
+      return;
+    }
+  }
+  lockServerView();
   if (message) showToast("success", message);
 }
 setInterval(() => {
@@ -2986,49 +2487,8 @@ setInterval(() => {
     logoutLocal("نشست پایان یافت؛ دوباره وارد شوید.");
 }, 30000);
 window.addEventListener("storage", (event) => {
-  if (event.key === THEME_KEY && event.newValue && !currentUser) {
+  if (event.key === THEME_KEY && !currentUser && event.newValue)
     applyTheme(event.newValue);
-    return;
-  }
-  if (event.key !== STORAGE_KEY || !event.newValue) return;
-  try {
-    const fresh = JSON.parse(event.newValue);
-    if (fresh.schemaVersion !== 3) return;
-    const id = currentUser?.id,
-      version = currentUser?.authVersion || 1;
-    vehicles = fresh.vehicles;
-    samples = fresh.samples;
-    history = fresh.history;
-    centers = fresh.centers;
-    requesterUnits = fresh.units;
-    usedRequesterUnits = [
-      ...new Set([
-        ...usedRequesterUnits,
-        ...(Array.isArray(fresh.usedUnits) ? fresh.usedUnits : []),
-      ]),
-    ];
-    appUsers = fresh.users;
-    nextSampleId = fresh.nextSampleId;
-    nextVehicleId = fresh.nextVehicleId;
-    nextCenterId = fresh.nextCenterId;
-    nextUserId = fresh.nextUserId;
-    if (id) {
-      const user = appUsers.find((u) => u.id === id && u.active);
-      if (!user || version !== (user.authVersion || 1)) {
-        logoutLocal("دسترسی حساب تغییر کرد؛ دوباره وارد شوید.");
-        return;
-      }
-      currentUser = user;
-      applyTheme(
-        userPreferences(currentUser).theme ||
-          localStorage.getItem(THEME_KEY) ||
-          "system",
-      );
-      render();
-    }
-  } catch {
-    showToast("error", "به‌روزرسانی دادهٔ تب دیگر معتبر نیست.");
-  }
 });
 
 // ─── واحدهای مستقل؛ حذف درخواست، نام واحد را از فهرست پاک نمی‌کند. ───
@@ -3038,49 +2498,26 @@ function rememberUnit(name) {
   if (!requesterUnits.includes(value)) requesterUnits.push(value);
   return true;
 }
-function addUnit() {
-  if (!requireAccess("units.write")) return;
-  if (!rememberUnit(document.getElementById("newUnitName").value)) {
-    showToast("error", "نام واحد را با حداکثر ۱۰۰ نویسه وارد کنید.");
-    return;
-  }
-  saveState();
-  renderUnitList();
-  renderUnitsPanel();
-  showToast("success", "واحد با موفقیت ذخیره شد.");
+async function addUnit() {
+  if (
+    await serverWrite("units", "POST", {
+      name: document.getElementById("newUnitName").value.trim(),
+    })
+  )
+    document.getElementById("newUnitName").value = "";
 }
-function unitIsInUse(unit) {
+function unitIsInUse(name) {
   return (
-    usedRequesterUnits.includes(unit) ||
-    [...samples, ...history].some((record) => record.unit === unit) ||
-    appUsers.some((user) => user.unit === unit)
+    usedRequesterUnits.includes(name) || appUsers.some((x) => x.unit === name)
   );
 }
 function removeUnit(index) {
-  if (!requireAccess("units.write")) return;
-  const unit = requesterUnits[index];
-  if (!unit) return;
-  if (unitIsInUse(unit)) {
-    showToast(
-      "error",
-      "واحد در درخواست، سابقه یا حساب کاربری استفاده شده است.",
+  const name = requesterUnits[index],
+    r = serverUnitRecords.find((x) => x.name === name);
+  if (r)
+    openLocalConfirm("حذف واحد", `واحد «${name}» حذف شود؟`, () =>
+      serverWrite("units/" + r.id, "DELETE", {}, true),
     );
-    return;
-  }
-  openLocalConfirm("حذف واحد", `واحد «${unit}» از فهرست حذف شود؟`, () => {
-    if (!requireAccess("units.write")) return;
-    if (unitIsInUse(unit)) {
-      showToast(
-        "warning",
-        "این واحد اکنون سابقهٔ استفاده دارد و قابل حذف نیست.",
-      );
-      return;
-    }
-    requesterUnits = requesterUnits.filter((v) => v !== unit);
-    saveState();
-    closeModal();
-    render();
-  });
 }
 function renderUnitsPanel() {
   const el = document.getElementById("unitsPanel");
@@ -3127,7 +2564,7 @@ function openUserForm(id) {
         `<option value="${value}" ${u.role === value ? "selected" : ""}>${label}</option>`,
     )
     .join("")}</select></div>
-  <div class="form-group"><label for="uf_password">${id ? "رمز جدید؛ خالی یعنی بدون تغییر" : "رمز عبور؛ حداقل ۸ نویسه"}</label><input id="uf_password" type="password" autocomplete="new-password" minlength="8" ${id ? "" : "required"}></div>
+  <div class="form-group"><label for="uf_password">${id ? "رمز جدید؛ خالی یعنی بدون تغییر" : "رمز عبور؛ حداقل ۱۲ نویسه"}</label><input id="uf_password" type="password" autocomplete="new-password" minlength="12" ${id ? "" : "required"}></div>
   <div class="form-group full" id="uf_unitWrap"><label for="uf_unit">واحد درخواست‌کننده</label><select id="uf_unit">${requesterUnits.map((unit) => `<option value="${esc(unit)}" ${u.unit === unit ? "selected" : ""}>${esc(unit)}</option>`).join("")}</select></div>
   <fieldset class="form-group full" id="uf_vehicleWrap"><legend>خودروهای تخصیص‌یافته به راننده</legend><div class="assignment-grid">${vehicles.map((v) => `<label><input type="checkbox" name="uf_vehicle" value="${v.id}" ${u.vehicleIds?.includes(v.id) ? "checked" : ""}>${esc(v.name)}</label>`).join("")}</div></fieldset>
   <label class="checkbox-row full"><input id="uf_active" type="checkbox" ${u.active ? "checked" : ""}>حساب فعال باشد</label>
@@ -3140,96 +2577,29 @@ function toggleUserFields() {
   document.getElementById("uf_vehicleWrap").hidden = role !== "driver";
 }
 async function saveUserForm(id) {
-  if (!requireAccess("users.write")) return;
-  const name = document.getElementById("uf_name").value.trim(),
-    username = document
-      .getElementById("uf_username")
-      .value.trim()
-      .toLowerCase();
-  const role = document.getElementById("uf_role").value,
-    active = document.getElementById("uf_active").checked,
-    password = document.getElementById("uf_password").value;
-  const unit =
-    role === "requester" ? document.getElementById("uf_unit").value : null;
-  const vehicleIds =
-    role === "driver"
-      ? [...document.querySelectorAll('[name="uf_vehicle"]:checked')].map(
-          (node) => Number(node.value),
-        )
-      : [];
-  if (
-    !name ||
-    !/^[a-z0-9_.-]{3,32}$/.test(username) ||
-    !ROLE_RULES[role] ||
-    appUsers.some((u) => u.username === username && u.id !== id)
-  ) {
-    showToast("error", "نام، نقش یا نام کاربری معتبر و یکتا نیست.");
-    return;
-  }
-  if ((!id || password) && password.length < 8) {
-    showToast("error", "رمز عبور باید حداقل ۸ نویسه باشد.");
-    return;
-  }
-  if (role === "requester" && !requesterUnits.includes(unit)) {
-    showToast("error", "واحد درخواست‌کننده معتبر نیست.");
-    return;
-  }
-  if (role === "driver" && !vehicleIds.length) {
-    showToast("error", "برای راننده دست‌کم یک خودرو انتخاب کنید.");
-    return;
-  }
-  if (id === currentUser.id && (!active || role !== "admin")) {
-    showToast("error", "دسترسی مدیریتی حساب فعلی را نمی‌توانید حذف کنید.");
-    return;
-  }
-  const previous = appUsers.find((u) => u.id === id);
-  if (
-    previous?.role === "admin" &&
-    (!active || role !== "admin") &&
-    !appUsers.some((u) => u.id !== id && u.role === "admin" && u.active)
-  ) {
-    showToast("error", "آخرین مدیر فعال باید حفظ شود.");
-    return;
-  }
-  const saveButton = document.getElementById("saveUserButton");
-  saveButton.disabled = true;
-  try {
-    const passwordRecord = password ? await newPasswordRecord(password) : {};
-    if (!requireAccess("users.write")) return;
-    const next = {
-      ...previous,
-      id: id || nextUserId++,
-      name,
-      username,
-      role,
-      active,
-      unit,
-      vehicleIds,
-      preferences: previous?.preferences || {
-        theme: null,
-        dismissedGuides: [],
-      },
-      authVersion: (previous?.authVersion || 0) + 1,
-      ...passwordRecord,
-    };
-    if (id) appUsers = appUsers.map((u) => (u.id === id ? next : u));
-    else appUsers.push(next);
-    if (id === currentUser.id) {
-      currentUser = next;
-      writeSession();
-    }
-    saveState();
-    closeModal();
-    render();
-    showToast("success", "حساب کاربری ذخیره شد.");
-  } catch {
-    showToast(
-      "error",
-      "ذخیرهٔ کاربر انجام نشد؛ اتصال امن و فضای ذخیره‌سازی را بررسی کنید.",
-    );
-  } finally {
-    if (saveButton.isConnected) saveButton.disabled = false;
-  }
+  const role = document.getElementById("uf_role").value;
+  const b = {
+    name: document.getElementById("uf_name").value.trim(),
+    username: document.getElementById("uf_username").value.trim().toLowerCase(),
+    role,
+    active: document.getElementById("uf_active").checked,
+    password: document.getElementById("uf_password").value,
+    unit:
+      role === "requester" ? document.getElementById("uf_unit").value : null,
+    vehicleIds:
+      role === "driver"
+        ? [...document.querySelectorAll("[name=uf_vehicle]:checked")].map((x) =>
+            Number(x.value),
+          )
+        : [],
+  };
+  if (id) b.version = appUsers.find((x) => x.id === id)?.version;
+  await serverWrite(
+    "users" + (id ? "/" + id : ""),
+    id ? "PUT" : "POST",
+    b,
+    true,
+  );
 }
 
 // ─── راهنماهای قابل خاموش‌کردن برای هر حساب و هر بخش ───
@@ -3413,7 +2783,7 @@ function openPreferences() {
         `<button type="button" class="theme-choice" data-theme-choice="${value}" aria-pressed="${theme === value}" onclick="setTheme('${value}')"><span class="theme-preview theme-preview-${value}" aria-hidden="true"></span><strong>${label}</strong><span class="theme-selected" aria-hidden="true">✓</span></button>`,
     )
     .join("")}</div></section>
-  <section id="settingsPanel-password" class="settings-stack settings-panel" role="tabpanel" aria-labelledby="settingsTab-password" hidden><h3>تغییر رمز حساب</h3><form class="settings-stack" onsubmit="event.preventDefault();changeOwnPassword()"><label for="ownOldPassword">رمز فعلی</label><input type="password" id="ownOldPassword" autocomplete="current-password" required><label for="ownNewPassword">رمز جدید؛ حداقل ۸ نویسه</label><input type="password" id="ownNewPassword" autocomplete="new-password" minlength="8" required><button class="btn-primary" id="ownPasswordButton">ذخیرهٔ رمز</button></form></section>
+  <section id="settingsPanel-password" class="settings-stack settings-panel" role="tabpanel" aria-labelledby="settingsTab-password" hidden><h3>تغییر رمز حساب</h3><form class="settings-stack" onsubmit="event.preventDefault();changeOwnPassword()"><label for="ownOldPassword">رمز فعلی</label><input type="password" id="ownOldPassword" autocomplete="current-password" required><label for="ownNewPassword">رمز جدید؛ حداقل ۱۲ نویسه</label><input type="password" id="ownNewPassword" autocomplete="new-password" minlength="12" required><button class="btn-primary" id="ownPasswordButton">ذخیرهٔ رمز</button></form></section>
   <section id="settingsPanel-guides" class="settings-stack settings-panel" role="tabpanel" aria-labelledby="settingsTab-guides" hidden><h3>نمایش راهنماها</h3><p class="settings-note">راهنمای هر بخش و راهنمای بستن پنجره را می‌توانید دوباره فعال کنید.</p><button type="button" class="btn-secondary" onclick="resetGuides()">بازنمایش همهٔ راهنماها</button><button type="button" class="btn-secondary" onclick="closeModal();showSectionGuide()">راهنمای بخش فعلی</button><button type="button" class="btn-secondary" onclick="restoreModalCloseHelp()">بازنمایش راهنمای بستن پنجره</button></section>
   </div></section></div>`;
 }
@@ -3431,34 +2801,15 @@ function selectSettingsTab(id, focus = false) {
 }
 
 async function changeOwnPassword() {
-  if (!currentUser) return;
-  const user = currentUser,
-    oldPassword = document.getElementById("ownOldPassword").value,
-    newPassword = document.getElementById("ownNewPassword").value;
-  if (newPassword.length < 8) {
-    showToast("error", "رمز جدید کوتاه است.");
-    return;
-  }
-  const button = document.getElementById("ownPasswordButton");
-  button.disabled = true;
-  try {
-    if (!(await verifyPassword(user, oldPassword))) {
-      showToast("error", "رمز فعلی درست نیست.");
-      return;
-    }
-    const record = await newPasswordRecord(newPassword);
-    if (currentUser?.id !== user.id) return;
-    Object.assign(user, record);
-    user.authVersion = (user.authVersion || 1) + 1;
-    writeSession();
-    saveState();
-    closeModal();
-    showToast("success", "رمز حساب تغییر کرد.");
-  } catch {
-    showToast("error", "تغییر رمز انجام نشد.");
-  } finally {
-    if (button.isConnected) button.disabled = false;
-  }
+  await serverWrite(
+    "password",
+    "POST",
+    {
+      oldPassword: document.getElementById("ownOldPassword").value,
+      newPassword: document.getElementById("ownNewPassword").value,
+    },
+    true,
+  );
 }
 
 // ─── مأموریت‌های راننده، مناسب موبایل و شامل رزروهای روزهای آینده ───
@@ -3467,24 +2818,12 @@ function setMissionFilter(value) {
   missionFilter = value;
   renderMissions();
 }
-function startMission(id) {
-  if (!requireAccess("missions.write")) return;
-  const sample = samples.find((s) => s.id === id);
-  if (
-    !sample ||
-    !canSeeSample(sample) ||
-    sample.status === "delivered" ||
-    sample.date > todayStr()
-  ) {
-    showToast("error", "این مأموریت اکنون قابل شروع نیست.");
-    return;
-  }
-  sample.progress = "enroute";
-  sample.status = "active";
-  sample.startedAt = new Date().toISOString();
-  saveState();
-  render();
-  showToast("success", "شروع مأموریت ثبت شد.");
+async function startMission(id) {
+  const r = samples.find((x) => x.id === id);
+  if (!r) return;
+  await serverWrite("requests/" + id + "/start", "POST", {
+    version: r.version,
+  });
 }
 function renderMissions() {
   const el = document.getElementById("missionsPanel");
@@ -3978,5 +3317,205 @@ uiObserver.observe(document.body, {
 });
 enhancePasswordInputs();
 enhanceTooltips();
+
+// این متغیرها فقط در حافظهٔ صفحه‌اند؛ دادهٔ عملیاتی در localStorage ذخیره نمی‌شود.
+let serverDashboard = {
+  topVehicles: [],
+  topUnits: [],
+  topCenters: [],
+  days: [],
+  recentTotal: 0,
+};
+let serverCsrf = "";
+let serverRevision = -1;
+let serverUnitRecords = [];
+let serverCapacityUsage = [];
+let serverHistoryCursor = null;
+let serverBusy = false;
+let preferenceQueue = Promise.resolve();
+async function apiRequest(path, method = "GET", data, operationKey) {
+  const headers = { Accept: "application/json" };
+  if (method !== "GET") {
+    headers["Content-Type"] = "application/json";
+    if (serverCsrf) headers["X-CSRF-Token"] = serverCsrf;
+    if (operationKey) headers["Idempotency-Key"] = operationKey;
+  }
+  let response;
+  try {
+    response = await fetch("/api/" + path, {
+      method,
+      headers,
+      credentials: "same-origin",
+      cache: "no-store",
+      body: method === "GET" ? undefined : JSON.stringify(data || {}),
+    });
+  } catch {
+    throw new Error(
+      method === "GET"
+        ? "ارتباط با سرور برقرار نشد."
+        : "پاسخ سرور دریافت نشد؛ نتیجهٔ عملیات نامشخص است. پیش از تکرار، وضعیت را بررسی کنید.",
+    );
+  }
+  let result;
+  try {
+    result = await response.json();
+  } catch {
+    throw new Error("پاسخ API معتبر نیست؛ تنظیم مسیر /api/ را بررسی کنید.");
+  }
+  if (!response.ok)
+    throw Object.assign(new Error(result.error || "درخواست انجام نشد."), {
+      status: response.status,
+    });
+  return result;
+}
+function lockServerView() {
+  closeModal();
+  closeGuide();
+  currentUser = null;
+  sessionExpiresAt = 0;
+  serverCsrf = "";
+  serverRevision = -1;
+  vehicles = [];
+  samples = [];
+  history = [];
+  centers = [];
+  requesterUnits = [];
+  appUsers = [];
+  render();
+  document.getElementById("loginPassword").value = "";
+}
+async function refreshServerState() {
+  const d = await apiRequest("state?revision=" + serverRevision);
+  serverCsrf = d.csrfToken;
+  sessionExpiresAt = d.sessionExpiresAt;
+  if (d.unchanged) return false;
+  serverRevision = d.revision;
+  serverDashboard = d.dashboard || serverDashboard;
+  vehicles = d.vehicles;
+  samples = d.samples;
+  history = d.history;
+  centers = d.centers;
+  requesterUnits = d.units;
+  usedRequesterUnits = d.usedUnits;
+  appUsers = d.users;
+  currentUser = d.currentUser;
+  sessionExpiresAt = d.sessionExpiresAt;
+  serverUnitRecords = d.unitRecords;
+  serverCapacityUsage = d.capacityUsage;
+  serverHistoryCursor = d.historyCursor;
+  return true;
+}
+async function serverWrite(path, method, data, close = false, operationKey) {
+  if (serverBusy) {
+    showToast("warning", "عملیات قبلی هنوز در حال انجام است.");
+    return null;
+  }
+  serverBusy = true;
+  let committed = false;
+  try {
+    const result = await apiRequest(path, method, data, operationKey);
+    committed = true;
+    if (close) closeModal();
+    await refreshServerState();
+    render();
+    showToast("success", "اطلاعات روی سرور ثبت شد.");
+    return result;
+  } catch (e) {
+    if (e.status === 401) lockServerView();
+    showToast(
+      committed ? "warning" : "error",
+      committed
+        ? "عملیات ثبت شد، اما تازه‌سازی صفحه انجام نشد؛ قبل از تکرار وضعیت را بررسی کنید."
+        : e.message,
+    );
+    // فقط بازخوانی؛ نوشتن مبهم یا متعارض خودکار تکرار نمی‌شود.
+    if (!committed && e.status === 409) {
+      try {
+        await refreshServerState();
+        render();
+      } catch {}
+    }
+    return null;
+  } finally {
+    serverBusy = false;
+  }
+}
+function queueServerPreferences(value) {
+  preferenceQueue = preferenceQueue
+    .catch(() => {})
+    .then(async () => {
+      try {
+        await apiRequest("preferences", "PUT", value);
+      } catch (e) {
+        showToast("error", "تنظیمات ذخیره نشد: " + e.message);
+      }
+    });
+}
+async function loadMoreServerHistory() {
+  if (!serverHistoryCursor) return;
+  try {
+    const d = await apiRequest("history?before=" + serverHistoryCursor);
+    const ids = new Set(history.map((x) => x.id));
+    history.push(...d.items.filter((x) => !ids.has(x.id)));
+    const sampleIds = new Set(samples.map((x) => x.id));
+    samples.push(...d.items.filter((x) => !sampleIds.has(x.id)));
+    serverHistoryCursor = d.cursor;
+    renderHistory();
+    if (currentUser?.role === "driver") renderMissions();
+  } catch (e) {
+    showToast("error", e.message);
+  }
+}
+const originalRenderServerHistory = renderHistory;
+renderHistory = function () {
+  originalRenderServerHistory();
+  document.getElementById("serverHistoryMore")?.remove();
+  if (!serverHistoryCursor) return;
+  const button = document.createElement("button");
+  button.id = "serverHistoryMore";
+  button.className = "btn-secondary";
+  button.type = "button";
+  button.textContent = "نمایش سوابق قدیمی‌تر";
+  button.onclick = loadMoreServerHistory;
+  document
+    .getElementById("historyTbody")
+    .closest(".req-list-card")
+    ?.append(button);
+};
+// به‌روزرسانی دوره‌ای؛ در زمان ویرایش مودال، فرم کاربر بازسازی نمی‌شود.
+setInterval(async () => {
+  if (
+    !currentUser ||
+    document.hidden ||
+    serverBusy ||
+    document.querySelector(".modal-overlay,.guide-overlay") ||
+    document.activeElement?.matches("input,select,textarea")
+  )
+    return;
+  try {
+    if (await refreshServerState()) render();
+  } catch (e) {
+    if (e.status === 401) lockServerView();
+  }
+}, 30000);
+
+const originalServerRenderMissions = renderMissions;
+renderMissions = function () {
+  originalServerRenderMissions();
+  document.getElementById("serverMissionMore")?.remove();
+  if (
+    currentUser?.role !== "driver" ||
+    missionFilter !== "completed" ||
+    !serverHistoryCursor
+  )
+    return;
+  const button = document.createElement("button");
+  button.id = "serverMissionMore";
+  button.type = "button";
+  button.className = "btn-secondary";
+  button.textContent = "نمایش درخواست‌های انجام‌شدهٔ قدیمی‌تر";
+  button.onclick = loadMoreServerHistory;
+  document.getElementById("missionsPanel").append(button);
+};
 
 bootLocalAccess();

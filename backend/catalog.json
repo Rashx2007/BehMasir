@@ -1,0 +1,188 @@
+{
+  "vehicles": [
+    {
+      "id": 1,
+      "name": "خودرو ۱ (سواری)",
+      "plate": "۱۲۳-الف",
+      "bodyType": "sedan",
+      "serviceType": "both",
+      "passengerCapacity": 3,
+      "cargoCapacity": 5,
+      "hasFridge": false,
+      "fridgeCapacity": 0,
+      "shiftStart": "07:00",
+      "shiftEnd": "16:00",
+      "ownership": "org",
+      "contractorName": "",
+      "status": "ok"
+    },
+    {
+      "id": 2,
+      "name": "خودرو ۲ (سواری)",
+      "plate": "۴۵۶-ب",
+      "bodyType": "sedan",
+      "serviceType": "cargo",
+      "passengerCapacity": 0,
+      "cargoCapacity": 5,
+      "hasFridge": false,
+      "fridgeCapacity": 0,
+      "shiftStart": "07:00",
+      "shiftEnd": "22:00",
+      "ownership": "org",
+      "contractorName": "",
+      "status": "ok"
+    },
+    {
+      "id": 3,
+      "name": "خودرو ۳ (وانت یخچالی)",
+      "plate": "۷۸۹-ج",
+      "bodyType": "pickup_single",
+      "serviceType": "cargo",
+      "passengerCapacity": 0,
+      "cargoCapacity": 8,
+      "hasFridge": true,
+      "fridgeCapacity": 4,
+      "shiftStart": null,
+      "shiftEnd": null,
+      "ownership": "org",
+      "contractorName": "",
+      "status": "ok"
+    },
+    {
+      "id": 4,
+      "name": "خودرو ۴ (سواری)",
+      "plate": "۴۴۴-ش",
+      "bodyType": "sedan",
+      "serviceType": "passenger",
+      "passengerCapacity": 3,
+      "cargoCapacity": 5,
+      "hasFridge": false,
+      "fridgeCapacity": 0,
+      "shiftStart": "08:00",
+      "shiftEnd": "16:00",
+      "ownership": "org",
+      "contractorName": "",
+      "status": "ok"
+    },
+    {
+      "id": 5,
+      "name": "خودرو ۵ (وانت یخچالی)",
+      "plate": "۵۵۵-س",
+      "bodyType": "pickup_single",
+      "serviceType": "both",
+      "passengerCapacity": 1,
+      "cargoCapacity": 5,
+      "hasFridge": true,
+      "fridgeCapacity": 5,
+      "shiftStart": "08:00",
+      "shiftEnd": "16:00",
+      "ownership": "org",
+      "contractorName": "",
+      "status": "ok"
+    },
+    {
+      "id": 6,
+      "name": "خودرو ۶ (وانت دوکابین)",
+      "plate": "۶۶۶-ی",
+      "bodyType": "pickup_double",
+      "serviceType": "both",
+      "passengerCapacity": 3,
+      "cargoCapacity": 5,
+      "hasFridge": false,
+      "fridgeCapacity": 0,
+      "shiftStart": "08:00",
+      "shiftEnd": "16:00",
+      "ownership": "org",
+      "contractorName": "",
+      "status": "ok"
+    },
+    {
+      "id": 7,
+      "name": "خودرو ۷ (وانت یخچالی)",
+      "plate": "۷۷۷-ب",
+      "bodyType": "pickup_single",
+      "serviceType": "both",
+      "passengerCapacity": 1,
+      "cargoCapacity": 5,
+      "hasFridge": true,
+      "fridgeCapacity": 5,
+      "shiftStart": "08:00",
+      "shiftEnd": "16:00",
+      "ownership": "org",
+      "contractorName": "",
+      "status": "ok"
+    },
+    {
+      "id": 8,
+      "name": "خودرو ۸ (وانت دوکابین)",
+      "plate": "۸۸۸-ل",
+      "bodyType": "pickup_double",
+      "serviceType": "cargo",
+      "passengerCapacity": 0,
+      "cargoCapacity": 5,
+      "hasFridge": false,
+      "fridgeCapacity": 0,
+      "shiftStart": "08:00",
+      "shiftEnd": "16:00",
+      "ownership": "org",
+      "contractorName": "",
+      "status": "ok"
+    }
+  ],
+  "units": [
+    "امور اداری",
+    "بهداشت و درمان",
+    "واحد فنی",
+    "مرکز مدیریت بیماری‌های واگیر",
+    "آزمایشگاه مرکزی",
+    "مرکز بهداشت شهرستان",
+    "امور پشتیبانی",
+    "فناوری اطلاعات",
+    "تدارکات",
+    "اورژانس"
+  ],
+  "centers": [
+    {
+      "id": 1,
+      "name": "کلینیک شریعتی",
+      "lat": 35.7219,
+      "lng": 51.4347
+    },
+    {
+      "id": 2,
+      "name": "بیمارستان امام",
+      "lat": 35.705,
+      "lng": 51.401
+    },
+    {
+      "id": 3,
+      "name": "درمانگاه ولیعصر",
+      "lat": 35.682,
+      "lng": 51.395
+    },
+    {
+      "id": 4,
+      "name": "مرکز بهداشت شمال",
+      "lat": 35.74,
+      "lng": 51.46
+    },
+    {
+      "id": 5,
+      "name": "آزمایشگاه مرکزی",
+      "lat": 35.6961,
+      "lng": 51.4231
+    },
+    {
+      "id": 6,
+      "name": "آزمایشگاه پاتولوژی",
+      "lat": 35.71,
+      "lng": 51.41
+    },
+    {
+      "id": 7,
+      "name": "مرکز تشخیص طبی",
+      "lat": 35.675,
+      "lng": 51.405
+    }
+  ]
+}

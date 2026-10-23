@@ -1,4 +1,49 @@
+# Private files and dependencies
 private/
 node_modules/
-.DS_Store
-Thumbs.db
+
+# Secrets and local configuration
+.env
+.env.*
+*.env
+*.cnf
+!.env.example
+!*.env.example
+
+# Certificates and private keys
+*.pfx
+*.p12
+*.pem
+*.key
+
+# Backups and database dumps
+backups/
+*.bak
+*.dump
+*.sql.gz
+*.sql.zip
+behmasir-*.sql
+after-setup-*.sql
+
+# Logs and archives
+*.log
+DB.zip
+
+# Packaged archives
+*.zip
+*.7z
+*.rar
+
+# Local npm cache
+/npm-cache/
+
+# Old launcher backups
+/launcher-backup-*/
+/windows-backup-*/
+*.backup-*
+
+# Machine-specific Windows shortcuts
+*.lnk
+
+# Generated database documentation; kept locally
+/ERD/
