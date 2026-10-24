@@ -3,10 +3,12 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { pool, rows, transaction, audit } from "./db.mjs";
 import { hash, fail, text, passwordHash, verifyPassword } from "./core.mjs";
 import { snapshot, historyPage, mutate } from "./domain.mjs";
+import { assertVehicleTypesSchema } from "./vehicle-types.mjs";
+import { sessionCookieName } from "./session-config.mjs";
 const ORIGIN = process.env.APP_ORIGIN;
 if (!ORIGIN || !/^https:\/\//.test(ORIGIN))
   throw new Error("APP_ORIGIN باید مبدأ HTTPS واقعی باشد.");
-const cookieName = "__Host-behmasir";
+const cookieName = sessionCookieName();
 const sessionCookie = (token) =>
   `${cookieName}=${token}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=28800`;
 const expiredCookie = `${cookieName}=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0`;
@@ -238,6 +240,12 @@ const server = http.createServer(async (req, res) => {
 });
 server.requestTimeout = 15000;
 server.headersTimeout = 10000;
+try {
+  await assertVehicleTypesSchema(pool);
+} catch (e) {
+  await pool.end();
+  throw e;
+}
 server.listen(Number(process.env.PORT || 3000), "127.0.0.1", () =>
   console.log("BehMasir API on loopback"),
 );

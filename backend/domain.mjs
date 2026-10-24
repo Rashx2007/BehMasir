@@ -14,6 +14,7 @@ import {
   preferences,
   hash,
 } from "./core.mjs";
+import { listVehicleTypes, resolveVehicleType } from "./vehicle-types.mjs";
 export const manager = (u) => ["admin", "dispatcher"].includes(u.role_code);
 const manage = (u) => {
   if (!manager(u)) fail(403, "اجازهٔ مدیریت این بخش را ندارید.");
@@ -58,6 +59,7 @@ export function vehicleDTO(v) {
     name: v.name,
     plate: v.plate,
     bodyType: v.body_type,
+    vehicleTypeId: v.vehicle_type_id,
     serviceType: v.service_type,
     passengerCapacity: v.passenger_capacity,
     cargoCapacity: v.cargo_capacity,
@@ -122,13 +124,14 @@ export async function snapshot(u) {
             c,
             "SELECT * FROM vehicles WHERE deleted_at IS NULL ORDER BY id",
           );
+    const vehicleTypes = await listVehicleTypes(c);
     const centers = await rows(
       c,
       "SELECT id,name,lat,lng,version FROM centers WHERE deleted_at IS NULL ORDER BY id",
     );
     const units = await rows(
       c,
-      "SELECT id,name,used_ever FROM units WHERE deleted_at IS NULL ORDER BY id",
+      "SELECT id,name,parent_id,used_ever FROM units WHERE deleted_at IS NULL ORDER BY id",
     );
     const samples = await rows(
       c,
@@ -182,13 +185,18 @@ export async function snapshot(u) {
     return {
       revision,
       vehicles: vehicles.map(vehicleDTO),
+      vehicleTypes,
       centers: centers.map((x) => ({
         ...x,
         lat: x.lat === null ? null : Number(x.lat),
         lng: x.lng === null ? null : Number(x.lng),
       })),
       units: units.map((x) => x.name),
-      unitRecords: units.map((x) => ({ id: x.id, name: x.name })),
+      unitRecords: units.map((x) => ({
+        id: x.id,
+        name: x.name,
+        parentId: x.parent_id,
+      })),
       usedUnits: units.filter((x) => x.used_ever).map((x) => x.name),
       dashboard,
       samples: [...sampleMap.values()].map(requestDTO),
@@ -607,8 +615,10 @@ export async function mutate(u, method, path, b, key) {
           [v.id],
         );
       } else if ((method === "POST" && !id) || (method === "PUT" && id)) {
+        let previousVehicle = null;
         if (id) {
           const v = await resource(db, "vehicles", id);
+          previousVehicle = v;
           version(v, b);
           if (
             v.deleted_at ||
@@ -622,18 +632,17 @@ export async function mutate(u, method, path, b, key) {
           )
             fail(409, "خودرو حذف شده یا مأموریت باز دارد.");
         }
+        const selectedType = await resolveVehicleType(
+          db,
+          b.bodyType,
+          previousVehicle?.vehicle_type_id,
+          b.vehicleTypeId,
+        );
         const data = [
           text(b.name),
           text(b.plate, 40),
           plateKey(b.plate),
-          choice(b.bodyType, [
-            "sedan",
-            "pickup_single",
-            "pickup_double",
-            "van",
-            "minibus",
-            "truck",
-          ]),
+          selectedType.code,
           choice(b.serviceType, ["passenger", "cargo", "both"]),
           integer(b.passengerCapacity, 0, 1000),
           integer(b.cargoCapacity, 0, 10000),
@@ -644,6 +653,7 @@ export async function mutate(u, method, path, b, key) {
           choice(b.ownership, ["org", "contractor"]),
           b.ownership === "contractor" ? text(b.contractorName, 150) : "",
           choice(b.status, ["ok", "down", "maintenance"]),
+          selectedType.id,
         ];
         if (
           (data[9] === null) !== (data[10] === null) ||
@@ -667,6 +677,7 @@ export async function mutate(u, method, path, b, key) {
           "ownership",
           "contractor_name",
           "status",
+          "vehicle_type_id",
         ];
         if (id)
           await rows(

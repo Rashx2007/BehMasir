@@ -2,7 +2,12 @@
 import { readFile } from "node:fs/promises";
 import { pool, rows, transaction } from "./db.mjs";
 import { plateKey } from "./core.mjs";
+import {
+  assertVehicleTypesSchema,
+  resolveVehicleType,
+} from "./vehicle-types.mjs";
 try {
+  await assertVehicleTypesSchema(pool);
   const seed = JSON.parse(
     await readFile(new URL("./catalog.json", import.meta.url), "utf8"),
   );
@@ -18,10 +23,11 @@ try {
         c.lat,
         c.lng,
       ]);
-    for (const v of seed.vehicles)
+    for (const v of seed.vehicles) {
+      const type = await resolveVehicleType(db, v.bodyType);
       await rows(
         db,
-        "INSERT INTO vehicles(name,plate,plate_key,body_type,service_type,passenger_capacity,cargo_capacity,has_fridge,fridge_capacity,shift_start,shift_end,ownership,contractor_name,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO vehicles(name,plate,plate_key,body_type,service_type,passenger_capacity,cargo_capacity,has_fridge,fridge_capacity,shift_start,shift_end,ownership,contractor_name,status,vehicle_type_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         [
           v.name,
           v.plate,
@@ -37,8 +43,10 @@ try {
           v.ownership,
           v.contractorName,
           v.status,
+          type.id,
         ],
       );
+    }
   });
   console.log("فهرست پایه بدون حساب یا سفر آزمایشی ساخته شد.");
 } catch (e) {

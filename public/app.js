@@ -401,14 +401,8 @@ const badgeText = (car) =>
 const fillClass = (car) =>
   pct(car) >= 100 ? "fill-red" : pct(car) >= 60 ? "fill-amber" : "fill-green";
 
-const BODY_TYPE_LABELS = {
-  sedan: "سواری سدان",
-  pickup_single: "وانت تک‌کابین",
-  pickup_double: "وانت دوکابین",
-  van: "ون",
-  minibus: "مینی‌بوس",
-  truck: "کامیونت/کامیون",
-};
+// Loaded from vehicle_types after authentication; no hardcoded reference list.
+const BODY_TYPE_LABELS = Object.create(null);
 const SERVICE_TYPE_LABELS = {
   passenger: "مسافر",
   cargo: "بار",
@@ -420,8 +414,8 @@ const STATUS_LABELS = {
   maintenance: "در حال تعمیر",
 };
 const OWNERSHIP_LABELS = {
-  org: "متعلق به اداره",
-  contractor: "قراردادی (شرکت بیرونی)",
+  org: "دولتی",
+  contractor: "پیمان‌کار",
 };
 
 // آیا خودرو در این ساعت مشخص فعال است؟ (شیفت کاری)
@@ -1790,7 +1784,7 @@ function renderVehicles() {
         </div>
       </div>
       <div class="vehicle-tags">
-        <span class="tag">${BODY_TYPE_LABELS[car.bodyType] || car.bodyType}</span>
+        <span class="tag">${esc(BODY_TYPE_LABELS[car.bodyType] || car.bodyType)}</span>
         <span class="tag">${SERVICE_TYPE_LABELS[car.serviceType] || car.serviceType}</span>
         ${car.hasFridge ? `<span class="tag tag-cold">❄️ یخچال‌دار</span>` : ""}
         <span class="tag ${statusTagClass}">${STATUS_LABELS[car.status]}</span>
@@ -1828,7 +1822,9 @@ function openVehicleForm(vehicleId) {
     : {
         name: "",
         plate: "",
-        bodyType: "sedan",
+        bodyType:
+          serverVehicleTypes.find((t) => t.isActive && !t.deletedAt)?.code ||
+          "",
         serviceType: "cargo",
         passengerCapacity: 0,
         cargoCapacity: 5,
@@ -1843,6 +1839,13 @@ function openVehicleForm(vehicleId) {
       };
   if (!v) {
     showToast("error", "خودرو پیدا نشد.");
+    return;
+  }
+  const typeChoices = serverVehicleTypes.filter(
+    (t) => (t.isActive && !t.deletedAt) || (isEdit && t.code === v.bodyType),
+  );
+  if (!typeChoices.length) {
+    showToast("error", "نوع خودرو فعالی در دیتابیس تعریف نشده است.");
     return;
   }
   const is24h = !v.shiftStart && !v.shiftEnd;
@@ -1871,10 +1874,10 @@ function openVehicleForm(vehicleId) {
             <div class="form-group">
               <label>نوع بدنه</label>
               <select id="vf_bodyType">
-                ${Object.entries(BODY_TYPE_LABELS)
+                ${typeChoices
                   .map(
-                    ([k, l]) =>
-                      `<option value="${k}" ${v.bodyType === k ? "selected" : ""}>${l}</option>`,
+                    (t) =>
+                      `<option value="${esc(t.code)}" ${v.bodyType === t.code ? "selected" : ""}>${esc(t.title)}${!t.isActive || t.deletedAt ? " (غیرفعال)" : ""}</option>`,
                   )
                   .join("")}
               </select>
@@ -2033,6 +2036,8 @@ async function saveVehicleForm(id) {
     name: val("name").trim(),
     plate: val("plate").trim(),
     bodyType: val("bodyType"),
+    vehicleTypeId: serverVehicleTypes.find((t) => t.code === val("bodyType"))
+      ?.id,
     serviceType: val("serviceType"),
     passengerCapacity: Number(val("passengerCapacity")),
     cargoCapacity: Number(val("cargoCapacity")),
@@ -3329,6 +3334,7 @@ let serverDashboard = {
 let serverCsrf = "";
 let serverRevision = -1;
 let serverUnitRecords = [];
+let serverVehicleTypes = [];
 let serverCapacityUsage = [];
 let serverHistoryCursor = null;
 let serverBusy = false;
@@ -3375,6 +3381,9 @@ function lockServerView() {
   sessionExpiresAt = 0;
   serverCsrf = "";
   serverRevision = -1;
+  serverVehicleTypes = [];
+  for (const code of Object.keys(BODY_TYPE_LABELS))
+    delete BODY_TYPE_LABELS[code];
   vehicles = [];
   samples = [];
   history = [];
@@ -3389,6 +3398,16 @@ async function refreshServerState() {
   serverCsrf = d.csrfToken;
   sessionExpiresAt = d.sessionExpiresAt;
   if (d.unchanged) return false;
+  if (!Array.isArray(d.vehicleTypes)) {
+    throw new Error(
+      "بک‌اند و رابط هم‌نسخه نیستند؛ اطلاعات انواع خودرو دریافت نشد.",
+    );
+  }
+  serverVehicleTypes = d.vehicleTypes;
+  for (const code of Object.keys(BODY_TYPE_LABELS))
+    delete BODY_TYPE_LABELS[code];
+  for (const type of serverVehicleTypes)
+    BODY_TYPE_LABELS[type.code] = type.title;
   serverRevision = d.revision;
   serverDashboard = d.dashboard || serverDashboard;
   vehicles = d.vehicles;
