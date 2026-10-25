@@ -1,0 +1,73 @@
+{
+  "base_commit": "e830c51",
+  "branch": "feature/org-workflow-audit",
+  "target_database": "behmasir_upgrade_verify",
+  "test_status": {
+    "node_tests_passed": 45,
+    "mysql_runtime_tested": false,
+    "powershell_runtime_tested": false
+  },
+  "files": [
+    {
+      "path": "backend/db.mjs",
+      "sha256": "a7c1b4ff20883e1d8fa16c24dc67c3df0600a0bf2b01559e3d92b9fccb103beb"
+    },
+    {
+      "path": "backend/domain.mjs",
+      "sha256": "97863de998e172669038ef23336184210a14038fb8c510f82e3f722945cab4b9"
+    },
+    {
+      "path": "backend/server.mjs",
+      "sha256": "8dc8e72a0ed2f7e4184fec3f4c3886094874800c9a929a95501d79726c513e6c"
+    },
+    {
+      "path": "backend/history-context.mjs",
+      "sha256": "1278fc530977d26592f9d85172a6b762ebd64abc90bf8a81b22d25d2f0178901"
+    },
+    {
+      "path": "backend/install-history.mjs",
+      "sha256": "565f0d41c5c73fbd28b284441e1274fc5310a694cf0b7a8854f775afc48327e8"
+    },
+    {
+      "path": "backend/verify-history.mjs",
+      "sha256": "737c56b91ba706769177820d1332f4a1e289bb406b0ae73820d012917b7fabc1"
+    },
+    {
+      "path": "sql/003_history_foundation_TEST_ONLY.sql",
+      "sha256": "2148d6d1d8bb3a61472628edc2124c170d7c27937436b97395358fd02b83594b"
+    },
+    {
+      "path": "sql/003_history_spec_TEST_ONLY.json",
+      "sha256": "67ddd03187adeb46d18ff0b4a603aacfc34bc5742055c7862e302bdc9cbb3c2e"
+    },
+    {
+      "path": "tests/history-context.test.mjs",
+      "sha256": "027f6588d69c170d5cd3a7647b79be686f5fe97089eee2b24ff136a453396114"
+    },
+    {
+      "path": "tests/history-migration-source.test.mjs",
+      "sha256": "adf8433e3a314f45cd422c3daa4b6cb6b62730a64830ff5ce43731aacc10f451"
+    },
+    {
+      "path": "windows/install-history.ps1",
+      "sha256": "6247dd177d87996832571d9c94d0b1d41978501eb48e860cd326a1b45b210d19"
+    },
+    {
+      "path": "UPGRADE-PHASE-03A-FA.md",
+      "sha256": "d1d4e4bfcda83abd278ba815f7d967a288b5d7d45079ba7b8f25499a6161ae44"
+    },
+    {
+      "path": "backend/history-install-plan.mjs",
+      "sha256": "a556d00c6e60e6485c5a7ec3fa7f7f381d5cf4a85d5f306fec01f277a836822e"
+    },
+    {
+      "path": "tests/history-install-plan.test.mjs",
+      "sha256": "a29d131dc7bc5b4541e27a20e5dce593fff366418ba0e9d621bd4acb89a07a7e"
+    },
+    {
+      "path": "UPGRADE-PHASE-03A-REPAIR-FA.md",
+      "sha256": "1df29bfbf9fbe2777db1d1c46bac65d7075a085f467c4de0952b235c04c42cea"
+    }
+  ],
+  "revision": "step-2-default-fix-and-explicit-step-1-resume"
+}

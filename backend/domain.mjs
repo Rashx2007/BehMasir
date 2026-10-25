@@ -1,3 +1,4 @@
+import { setHistoryActor } from "./history-context.mjs";
 import { rows, transaction, audit, json, pool } from "./db.mjs";
 import {
   fail,
@@ -297,6 +298,7 @@ export async function mutate(u, method, path, b, key) {
     if (!fresh?.active || fresh.auth_version !== u.auth_version)
       fail(401, "نشست معتبر نیست.");
     u = fresh;
+    await setHistoryActor(db, u.id);
     let response = { ok: true };
     const parts = path.split("/").filter(Boolean),
       kind = parts[0],

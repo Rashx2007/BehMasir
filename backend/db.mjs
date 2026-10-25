@@ -1,3 +1,4 @@
+import { transactionWithHistory } from "./history-context.mjs";
 import mysql from "mysql2/promise";
 if (
   process.env.DB_HOST &&
@@ -27,21 +28,7 @@ export async function rows(db, sql, args = []) {
   return r;
 }
 export async function transaction(work) {
-  const c = await pool.getConnection();
-  try {
-    await c.query("SET time_zone='+00:00'");
-    await c.beginTransaction();
-    await rows(c, "SELECT revision FROM app_meta WHERE id=1 FOR UPDATE");
-    const r = await work(c);
-    await rows(c, "UPDATE app_meta SET revision=revision+1 WHERE id=1");
-    await c.commit();
-    return r;
-  } catch (e) {
-    await c.rollback();
-    throw e;
-  } finally {
-    c.release();
-  }
+  return transactionWithHistory(pool, work);
 }
 export const json = (v) => JSON.stringify(v);
 export async function audit(db, user, action, entity, id, payload = {}) {

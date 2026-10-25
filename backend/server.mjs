@@ -1,3 +1,4 @@
+import { assertHistorySchema, setHistoryActor } from "./history-context.mjs";
 import http from "node:http";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { pool, rows, transaction, audit } from "./db.mjs";
@@ -181,6 +182,7 @@ const server = http.createServer(async (req, res) => {
         )[0];
         if (fresh.auth_version !== s.auth_version)
           fail(409, "حساب تغییر کرده است؛ دوباره وارد شوید.");
+        await setHistoryActor(db, s.id);
         await rows(
           db,
           "UPDATE users SET password_hash=?,auth_version=auth_version+1,version=version+1 WHERE id=?",
@@ -242,6 +244,7 @@ server.requestTimeout = 15000;
 server.headersTimeout = 10000;
 try {
   await assertVehicleTypesSchema(pool);
+  await assertHistorySchema(pool);
 } catch (e) {
   await pool.end();
   throw e;

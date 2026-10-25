@@ -1,0 +1,24 @@
+{
+  "base_commit": "afc6b85",
+  "requires_previous_package": "BehMasir-upgrade-phase-02.zip",
+  "files": [
+    {
+      "path": "backend/server.mjs",
+      "sha256": "1190066b678e4dfa2406e1f872825051ffcad835dd62625a3b0b7079ef8986a3"
+    },
+    {
+      "path": "backend/session-config.mjs",
+      "sha256": "77d209c92a97b5758179b09ca5e56327c4031f443845d7b9c987bfd2cc8c8bf9"
+    },
+    {
+      "path": "tests/session-config.test.mjs",
+      "sha256": "67bda6c33899090a9ebe950b5cdc3039af280a10d0a859f44735cdab20f82942"
+    },
+    {
+      "path": "windows/setup-upgrade-env.ps1",
+      "sha256": "81ae9efb45aa96d79b63cf64a52775afdda2307e0d5200b411a0c9b81f350885"
+    }
+  ],
+  "javascript_tests_passed": 25,
+  "powershell_windows_execution_tested": false
+}

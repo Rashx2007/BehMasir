@@ -1,0 +1,51 @@
+{
+  "base_commit": "afc6b85",
+  "requires_schema_version": 2,
+  "files": [
+    {
+      "path": "backend/vehicle-types.mjs",
+      "sha256": "6c3e36638107df5b93612336d0e21d1ac8241424d498ec4ba8162ba67ec10140",
+      "base_sha256": null
+    },
+    {
+      "path": "backend/domain.mjs",
+      "sha256": "278267ff71cf58ec8812c03451a574d7e4de9858873ae4e613345163aa45d217",
+      "base_sha256": "961af3d8367a9ae45ce179f360bdf50d44b532f551ac21e2fe9eca91b3c58f1c"
+    },
+    {
+      "path": "backend/server.mjs",
+      "sha256": "3515c271b44acc9473cf0551d513f4d42f9eaa3d6e120bfbbbbdb5cf0ead5741",
+      "base_sha256": "21ea0f55c3888c2fab4137a3db6d322822552de54f56f15bdac29213d64f1ba9"
+    },
+    {
+      "path": "backend/seed-catalog.mjs",
+      "sha256": "6e01808c7686919aa57b66618d3dce324b25932d8fbe6468363fcb8b9ec7f5e6",
+      "base_sha256": "adcb23cfda86699e588ce63419ade9f8e1c104ee9aecc826970dc3f16c5cac93"
+    },
+    {
+      "path": "backend/import-local.mjs",
+      "sha256": "abb294b85cef8ef1b97d59539e827838524a572d0ba33fb76bef3391355bb09f",
+      "base_sha256": "9ea84acf31409340d65b46bd767c05e2ebd6745a8b8e29e7d213b4e16a6a7c72"
+    },
+    {
+      "path": "public/app.js",
+      "sha256": "6194b57407abc50bd632d5205e60889714e88ea9c0bc71dcfcb87e6c9d59bca9",
+      "base_sha256": "d9f1109e0dfa19fe63e6af2d89df2d9a342549553a6defe1732cc9369d831fa4"
+    },
+    {
+      "path": "tests/vehicle-types.test.mjs",
+      "sha256": "1e21e1ac37bfa4e09258292d0f508730566ac317e548ed196ae2dd8c53e3ff2b",
+      "base_sha256": null
+    },
+    {
+      "path": "tests/types-bridge-source.test.mjs",
+      "sha256": "4c57b31247343a0e6eee2a57fc11a19293d88e5745facc760ad347529bef3d4a",
+      "base_sha256": null
+    }
+  ],
+  "tests": {
+    "unit_and_source_passed": 21,
+    "ui_mock_passed": true,
+    "real_mysql_integration_tested": false
+  }
+}
