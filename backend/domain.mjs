@@ -1,3 +1,4 @@
+import { endUserSessions } from "./auth-events.mjs";
 import { restoreVehicle, applyEmergency } from "./fleet-recovery.mjs";
 import { setHistoryActor } from "./history-context.mjs";
 import { rows, transaction, audit, json, pool } from "./db.mjs";
@@ -286,7 +287,7 @@ async function requestAllowed(db, u, r) {
     ).length > 0
   );
 }
-export async function mutate(u, method, path, b, key) {
+export async function mutate(u, method, path, b, key, clientIp = null) {
   return transaction(async (db) => {
     // مجوز در همان تراکنش دوباره بررسی می‌شود؛ نقش ارسال‌شده از مرورگر قابل اعتماد نیست.
     const fresh = (
@@ -750,6 +751,13 @@ export async function mutate(u, method, path, b, key) {
         );
         userId = r.insertId;
       }
+      if (prev)
+        await endUserSessions(db, {
+          userId,
+          actorId: u.id,
+          ip: clientIp,
+          reason: "account_updated",
+        });
       await rows(db, "DELETE FROM user_vehicles WHERE user_id=?", [userId]);
       for (const v of ids)
         await rows(db, "INSERT INTO user_vehicles VALUES (?,?)", [userId, v]);

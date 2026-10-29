@@ -1,0 +1,45 @@
+{
+  "phase": "04B-auth-events",
+  "base_commit": "b90ce1d439941d9b4b74a77242d1094b8edbc16f",
+  "target": "DB-upgrade / behmasir_upgrade_verify only",
+  "schema_change": false,
+  "unit_tests": {
+    "passed": 102,
+    "failed": 0
+  },
+  "real_mysql_acceptance": "not run in preparation environment; must run on isolated Windows test database",
+  "files": [
+    {
+      "path": "backend/server.mjs",
+      "sha256": "e5cb0e94b19d8becee6ab16a68dce1894f4b4492f33886b58419839806211d72"
+    },
+    {
+      "path": "backend/domain.mjs",
+      "sha256": "cc7c7a70200bbb7cb0dc4c025d4198b78be07d04b005ff9a324a62dfce30d4b9"
+    },
+    {
+      "path": "backend/auth-events.mjs",
+      "sha256": "d65a84f6aac873a88b64647a235360a260f9cbbd400535ad142b415caf9709b1"
+    },
+    {
+      "path": "backend/verify-auth-events.mjs",
+      "sha256": "b77b584cdb2addacfca6a547a9b669a0e422ad48998f2421e2ee4c45476bda6b"
+    },
+    {
+      "path": "tests/auth-fixtures.mjs",
+      "sha256": "cab4df66734b4c1ab07a23279a6612132f3f821904ff469a9bc37a849208e73e"
+    },
+    {
+      "path": "tests/auth-events.test.mjs",
+      "sha256": "0e4194ca14e73437391b3068da5c9d2dc575fe570e92d53c2633fa6e05d85149"
+    },
+    {
+      "path": "tests/auth-wiring.test.mjs",
+      "sha256": "262affa63e7cb98bb7959be3d4f344fb8366269795479f9eb6c1048148dfc192"
+    },
+    {
+      "path": "UPGRADE-PHASE-04B-AUTH-FA.md",
+      "sha256": "b2e7c8981c1486ac2048bf8fe28b102bf8a712dc13850d0ad48213117f436397"
+    }
+  ]
+}

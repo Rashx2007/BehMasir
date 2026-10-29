@@ -1,15 +1,31 @@
+import {
+  attemptLogin,
+  authEvent,
+  endUserSessions,
+  expireSessionBatch,
+  logoutSession,
+  requestIp,
+  resolveSession,
+} from "./auth-events.mjs";
 import { deletedVehicles, emergencyPreview } from "./fleet-recovery.mjs";
 import { assertHistorySchema, setHistoryActor } from "./history-context.mjs";
 import http from "node:http";
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { timingSafeEqual } from "node:crypto";
 import { pool, rows, transaction, audit } from "./db.mjs";
-import { hash, fail, text, passwordHash, verifyPassword } from "./core.mjs";
+import { hash, fail, passwordHash, verifyPassword } from "./core.mjs";
 import { snapshot, historyPage, mutate } from "./domain.mjs";
 import { assertVehicleTypesSchema } from "./vehicle-types.mjs";
 import { sessionCookieName } from "./session-config.mjs";
 const ORIGIN = process.env.APP_ORIGIN;
 if (!ORIGIN || !/^https:\/\//.test(ORIGIN))
   throw new Error("APP_ORIGIN باید مبدأ HTTPS واقعی باشد.");
+if (
+  process.env.TRUST_LOCAL_PROXY !== undefined &&
+  !["0", "1"].includes(process.env.TRUST_LOCAL_PROXY)
+) {
+  throw new Error("TRUST_LOCAL_PROXY must be 0 or 1.");
+}
+const clientIp = (req) => requestIp(req, process.env.TRUST_LOCAL_PROXY === "1");
 const cookieName = sessionCookieName();
 const sessionCookie = (token) =>
   `${cookieName}=${token}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=28800`;
@@ -53,14 +69,15 @@ function cookie(req) {
   return /^[0-9a-f]{64}$/.test(raw || "") ? raw : null;
 }
 async function session(req) {
-  const t = cookie(req);
-  if (!t) return null;
-  const list = await rows(
-    pool,
-    "SELECT u.*,s.token_hash,s.csrf_token,s.expires_at,x.name unit_name FROM sessions s JOIN users u ON u.id=s.user_id LEFT JOIN units x ON x.id=u.unit_id WHERE s.token_hash=? AND s.expires_at>UTC_TIMESTAMP(3) AND s.auth_version=u.auth_version AND u.active=1",
-    [hash(t)],
-  );
-  return list[0] || null;
+  const token = cookie(req);
+  return token
+    ? resolveSession({
+        pool,
+        run: transaction,
+        tokenHash: hash(token),
+        ip: clientIp(req),
+      })
+    : null;
 }
 function origin(req) {
   if (req.headers.origin !== ORIGIN) fail(403, "مبدأ درخواست مجاز نیست.");
@@ -74,59 +91,46 @@ function csrf(req, s) {
 }
 let activeLogins = 0;
 async function login(req, res, b) {
-  origin(req);
-  if (activeLogins >= 2) fail(429, "چند لحظه بعد دوباره تلاش کنید.");
+  const ip = clientIp(req);
+  try {
+    origin(req);
+  } catch (error) {
+    await authEvent(pool, "auth.login_rejected", {
+      username: b.username,
+      ip,
+      reason: "bad_origin",
+    });
+    throw error;
+  }
+  if (activeLogins >= 2) {
+    await authEvent(pool, "auth.login_rejected", {
+      username: b.username,
+      ip,
+      reason: "server_busy",
+    });
+    fail(429, "چند لحظه بعد دوباره تلاش کنید.");
+  }
   activeLogins++;
   try {
-    const username = text(b.username, 32).toLowerCase(),
-      ip = String(
-        req.headers["x-real-ip"] || req.socket.remoteAddress || "unknown",
-      );
-    const buckets = [hash("ip:" + ip), hash("user:" + username)];
-    await transaction(async (db) => {
-      for (const bucket of buckets) {
-        await rows(
-          db,
-          "INSERT INTO login_limits(bucket,failures,window_start) VALUES (?,0,UTC_TIMESTAMP(3)) ON DUPLICATE KEY UPDATE bucket=bucket",
-          [bucket],
-        );
-        await rows(
-          db,
-          "UPDATE login_limits SET failures=0,window_start=UTC_TIMESTAMP(3) WHERE bucket=? AND window_start<UTC_TIMESTAMP(3)-INTERVAL 15 MINUTE",
-          [bucket],
-        );
-        const r = (
-          await rows(db, "SELECT failures FROM login_limits WHERE bucket=?", [
-            bucket,
-          ])
-        )[0];
-        if (r.failures >= 10)
-          fail(429, "تلاش‌های ورود زیاد است؛ ۱۵ دقیقه بعد تلاش کنید.");
-        await rows(
-          db,
-          "UPDATE login_limits SET failures=failures+1 WHERE bucket=?",
-          [bucket],
-        );
-      }
+    const result = await attemptLogin({
+      pool,
+      run: transaction,
+      credentials: b,
+      ip,
     });
-    const u = (
-      await rows(pool, "SELECT * FROM users WHERE username=?", [username])
-    )[0];
-    const dummy = "scrypt$00000000000000000000000000000000$" + "00".repeat(64);
-    const valid = await verifyPassword(b.password, u?.password_hash || dummy);
-    if (!valid || !u?.active) fail(401, "نام کاربری یا رمز عبور درست نیست.");
-    const token = randomBytes(32).toString("hex"),
-      ct = randomBytes(32).toString("hex");
-    await transaction(async (db) => {
-      await rows(
-        db,
-        "INSERT INTO sessions(token_hash,user_id,csrf_token,auth_version,expires_at) VALUES (?,?,?,?,UTC_TIMESTAMP(3)+INTERVAL 8 HOUR)",
-        [hash(token), u.id, ct, u.auth_version],
+    if (result.status !== 200)
+      return send(
+        res,
+        result.status,
+        { error: result.error },
+        result.retryAfter ? { "Retry-After": String(result.retryAfter) } : {},
       );
-      await rows(db, "DELETE FROM login_limits WHERE bucket=?", [buckets[1]]);
-      await audit(db, u, "auth.login", "user", u.id);
-    });
-    send(res, 200, { ok: true }, { "Set-Cookie": sessionCookie(token) });
+    return send(
+      res,
+      200,
+      { ok: true },
+      { "Set-Cookie": sessionCookie(result.token) },
+    );
   } finally {
     activeLogins--;
   }
@@ -140,8 +144,19 @@ const server = http.createServer(async (req, res) => {
       await rows(pool, "SELECT 1");
       return send(res, 200, { ok: true });
     }
-    if (req.method === "POST" && path === "login")
-      return await login(req, res, await body(req));
+    if (req.method === "POST" && path === "login") {
+      let credentials;
+      try {
+        credentials = await body(req);
+      } catch (error) {
+        await authEvent(pool, "auth.login_rejected", {
+          ip: clientIp(req),
+          reason: "invalid_request",
+        });
+        throw error;
+      }
+      return await login(req, res, credentials);
+    }
     const s = await session(req);
     if (!s) fail(401, "دوباره وارد حساب شوید.");
     if (req.method === "GET" && path === "state") {
@@ -188,9 +203,7 @@ const server = http.createServer(async (req, res) => {
     csrf(req, s);
     const b = await body(req);
     if (path === "logout" && req.method === "POST") {
-      await rows(pool, "DELETE FROM sessions WHERE token_hash=?", [
-        s.token_hash,
-      ]);
+      await transaction((db) => logoutSession(db, s, clientIp(req)));
       return send(res, 200, { ok: true }, { "Set-Cookie": expiredCookie });
     }
     if (path === "password" && req.method === "POST") {
@@ -201,7 +214,7 @@ const server = http.createServer(async (req, res) => {
         const fresh = (
           await rows(db, "SELECT auth_version FROM users WHERE id=?", [s.id])
         )[0];
-        if (fresh.auth_version !== s.auth_version)
+        if (!fresh || fresh.auth_version !== s.auth_version)
           fail(409, "حساب تغییر کرده است؛ دوباره وارد شوید.");
         await setHistoryActor(db, s.id);
         await rows(
@@ -209,16 +222,34 @@ const server = http.createServer(async (req, res) => {
           "UPDATE users SET password_hash=?,auth_version=auth_version+1,version=version+1 WHERE id=?",
           [ph, s.id],
         );
-        await rows(
-          db,
-          "DELETE FROM sessions WHERE user_id=? AND token_hash<>?",
-          [s.id, s.token_hash],
-        );
+        await endUserSessions(db, {
+          userId: s.id,
+          excludeTokenHash: s.token_hash,
+          actorId: s.id,
+          ip: clientIp(req),
+          reason: "password_changed",
+        });
         await rows(
           db,
           "UPDATE sessions SET auth_version=auth_version+1 WHERE token_hash=?",
           [s.token_hash],
         );
+        const [refreshedSession] = await rows(
+          db,
+          "SELECT created_at,expires_at FROM sessions WHERE token_hash=?",
+          [s.token_hash],
+        );
+        if (!refreshedSession)
+          fail(409, "نشست تغییر کرده است؛ دوباره وارد شوید.");
+        await authEvent(db, "auth.session_refreshed", {
+          actorId: s.id,
+          userId: s.id,
+          username: s.username,
+          ip: clientIp(req),
+          reason: "password_changed",
+          sessionCreatedAt: refreshedSession.created_at,
+          sessionExpiresAt: refreshedSession.expires_at,
+        });
         await audit(db, s, "auth.password_changed", "user", s.id);
       });
       return send(res, 200, { ok: true });
@@ -226,7 +257,14 @@ const server = http.createServer(async (req, res) => {
     return send(
       res,
       200,
-      await mutate(s, req.method, path, b, req.headers["idempotency-key"]),
+      await mutate(
+        s,
+        req.method,
+        path,
+        b,
+        req.headers["idempotency-key"],
+        clientIp(req),
+      ),
     );
   } catch (e) {
     const known = e.status;
@@ -248,7 +286,6 @@ const server = http.createServer(async (req, res) => {
         JSON.stringify({
           time: new Date().toISOString(),
           code: e.code || "ERROR",
-          message: e.message,
         }),
       );
     if (!res.headersSent)
@@ -275,10 +312,9 @@ server.listen(Number(process.env.PORT || 3000), "127.0.0.1", () =>
 );
 const cleanup = setInterval(async () => {
   try {
-    await rows(
-      pool,
-      "DELETE FROM sessions WHERE expires_at<UTC_TIMESTAMP(3) LIMIT 1000",
-    );
+    for (let i = 0; i < 5; i++) {
+      if ((await transaction((db) => expireSessionBatch(db))) < 200) break;
+    }
     await rows(
       pool,
       "DELETE FROM login_limits WHERE window_start<UTC_TIMESTAMP(3)-INTERVAL 1 DAY LIMIT 1000",
