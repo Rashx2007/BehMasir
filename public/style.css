@@ -3283,3 +3283,48 @@ input[type="checkbox"] {
     flex-shrink: 0;
   }
 }
+
+/* Reason fields: match the application's Persian typography and theme. */
+#fleetRestoreReason,
+#fleetEmergencyReason {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 128px;
+  padding: 12px 14px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.9;
+  direction: rtl;
+  text-align: right;
+  resize: vertical;
+  overflow-wrap: anywhere;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+
+#fleetRestoreReason:focus,
+#fleetEmergencyReason:focus {
+  border-color: var(--primary);
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px var(--border);
+}
+
+label[for="fleetRestoreReason"],
+label[for="fleetEmergencyReason"] {
+  display: block;
+  margin-block-end: 4px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.8;
+  text-align: right;
+}

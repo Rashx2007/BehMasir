@@ -1,3 +1,7 @@
+let fleetDialogSequence = 0;
+let fleetDeletedItems = [];
+let pendingFleetRestore = null;
+let pendingFleetEmergency = null;
 // ─── Data ───
 const STORAGE_KEY = "fleet_demo_v1";
 
@@ -556,7 +560,7 @@ function renderCars() {
         </div>
         <div style="display:flex;gap:6px;align-items:center">
           <span class="badge ${badgeClass(car)}">${badgeText(car)}</span>
-          <button onclick="handleCarEmergency(${car.id})" title="انتقال اضطراری نمونه‌ها"
+          <button onclick="handleCarEmergency(${car.id})" title="بررسی بحران و پیش‌نمایش انتقال ایمن"
             style="background:#fee2e2;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:.75rem;color:#dc2626">
             🚨 بحران
           </button>
@@ -672,7 +676,7 @@ function renderVehicleSidebar() {
           <span class="badge ${status[1]}">${status[0]}</span>
           ${car.hasFridge ? '<span class="tag tag-cold">❄️ یخچال‌دار</span>' : ""}
         </div>
-        <button class="btn-crisis" onclick="handleCarEmergency(${car.id})" title="انتقال اضطراری نمونه‌ها">🚨 بحران</button>
+        <button class="btn-crisis" onclick="handleCarEmergency(${car.id})" title="بررسی بحران و پیش‌نمایش انتقال ایمن">🚨 بحران</button>
       </div>
       <div class="ring-wrap">
         <svg class="ring" viewBox="0 0 80 80">
@@ -1254,6 +1258,10 @@ async function confirmRouteOption() {
 }
 
 function closeModal() {
+  fleetDialogSequence++;
+  fleetDeletedItems = [];
+  pendingFleetRestore = null;
+  pendingFleetEmergency = null;
   window.Pickers?.closeAll();
   pendingConfirmAction = null;
   if (vehicleShiftPickers) {
@@ -1266,27 +1274,164 @@ function closeModal() {
   pendingOptions = [];
 }
 
-// ─── مدیریت بحران خودرو ───
-function handleCarEmergency(id) {
-  const v = vehicles.find((x) => x.id === id);
-  if (!v) return;
-  openLocalConfirm(
-    "انتقال مأموریت‌ها",
-    "مأموریت‌های باز با کنترل ظرفیت و شیفت به خودروهای دیگر منتقل شوند؟",
-    async () => {
-      const r = await serverWrite(
-        "vehicles/" + id + "/emergency",
-        "POST",
-        { version: v.version },
-        true,
-      );
-      if (r)
-        showToast(
-          r.moved === r.total ? "success" : "warning",
-          `${faNum(r.moved)} از ${faNum(r.total)} مأموریت منتقل شد.`,
-        );
-    },
+// ─── بازیابی کنترل‌شده و پیش‌نمایش بحران ───
+function fleetLoading(title) {
+  closeModal();
+  const seq = fleetDialogSequence;
+  document.getElementById("modalRoot").innerHTML =
+    `<div class="modal-overlay"><section class="modal-box"><div class="modal-head"><h2 class="modal-title">${esc(title)}</h2><button class="modal-close" onclick="closeModal()">×</button></div><div class="modal-body"><p>در حال دریافت اطلاعات…</p></div></section></div>`;
+  return seq;
+}
+function fleetReadError(error, seq) {
+  if (seq !== fleetDialogSequence) return;
+  if (error.status === 401) lockServerView();
+  else {
+    closeModal();
+    showToast("error", error.message);
+  }
+}
+async function openDeletedVehicles(before = null) {
+  if (currentUser?.role !== "admin") return;
+  const seq = fleetLoading("خودروهای حذف‌شده");
+  try {
+    const data = await apiRequest(
+      "vehicles/deleted" +
+        (before ? "?before=" + encodeURIComponent(before) : ""),
+    );
+    if (seq !== fleetDialogSequence || currentUser?.role !== "admin") return;
+    fleetDeletedItems = data.items;
+    document.getElementById("modalRoot").innerHTML =
+      `<div class="modal-overlay"><section class="modal-box"><div class="modal-head"><h2 class="modal-title">خودروهای حذف‌شده</h2><button class="modal-close" onclick="closeModal()">×</button></div><div class="modal-body settings-stack"><p>بازیابی فقط رکورد خودرو را برمی‌گرداند؛ خودرو در وضعیت غیرعملیاتی «تعمیرات» قرار می‌گیرد و اتصال‌های قبلی رانندگان خودکار فعال نمی‌شوند.</p>${data.items.length ? data.items.map((v) => `<article class="settings-card"><strong>${esc(v.name)}</strong><p>پلاک: ${esc(v.plate)} · نسخه: ${faNum(v.version)}</p><p>زمان حذف (UTC): <span dir="ltr">${esc(v.deletedAt)}</span></p><button class="btn-secondary" onclick="openVehicleRestore(${Number(v.id)})">بررسی بازیابی</button></article>`).join("") : "<p>خودروی حذف‌شده‌ای در این صفحه وجود ندارد.</p>"}</div><div class="modal-foot"><button class="btn-secondary" onclick="closeModal()">بستن</button>${data.cursor ? `<button class="btn-secondary" onclick="openDeletedVehicles(${Number(data.cursor)})">صفحهٔ بعد</button>` : ""}</div></section></div>`;
+  } catch (error) {
+    fleetReadError(error, seq);
+  }
+}
+function openVehicleRestore(id) {
+  if (currentUser?.role !== "admin") return;
+  const vehicle = fleetDeletedItems.find((v) => v.id === id);
+  if (!vehicle) return;
+  closeModal();
+  pendingFleetRestore = { vehicle, key: crypto.randomUUID() };
+  document.getElementById("modalRoot").innerHTML =
+    `<div class="modal-overlay"><section class="modal-box"><div class="modal-head"><h2 class="modal-title">بازیابی خودرو</h2><button class="modal-close" onclick="closeModal()">×</button></div><div class="modal-body settings-stack"><p>خودرو: <b>${esc(vehicle.name)}</b> — پلاک ${esc(vehicle.plate)}</p><p>پس از بازیابی، خودرو در وضعیت «تعمیرات» است؛ پیش از استفاده باید بررسی و راننده دوباره تخصیص داده شود. این کار بازگردانی نسخهٔ قدیمی مشخصات نیست.</p><div class="form-group"><label for="fleetRestoreReason">دلیل بازیابی (۵ تا ۵۰۰ نویسه)</label><textarea id="fleetRestoreReason" maxlength="500" rows="3"></textarea></div></div><div class="modal-foot"><button class="btn-secondary" onclick="openDeletedVehicles()">بازگشت به فهرست</button><button class="btn-primary" data-fleet-submit onclick="submitVehicleRestore()">بازیابی در وضعیت تعمیرات</button></div></section></div>`;
+}
+async function submitVehicleRestore() {
+  const pending = pendingFleetRestore;
+  if (!pending || currentUser?.role !== "admin") return;
+  const reason = document.getElementById("fleetRestoreReason").value.trim();
+  if ([...reason].length < 5) {
+    showToast("warning", "دلیل روشن، حداقل ۵ نویسه، وارد کنید.");
+    return;
+  }
+  await fleetWrite(
+    "vehicles/" + pending.vehicle.id + "/restore",
+    { version: pending.vehicle.version, reason },
+    pending.key,
+    () =>
+      showToast(
+        "success",
+        "خودرو بازیابی شد؛ وضعیت تعمیرات دارد و نیازمند بررسی و تخصیص مجدد راننده است.",
+      ),
   );
+}
+async function handleCarEmergency(id) {
+  if (!requireAccess("fleet.write")) return;
+  const vehicle = vehicles.find((v) => v.id === id);
+  if (!vehicle) return;
+  const seq = fleetLoading("پیش‌نمایش مدیریت بحران");
+  try {
+    const plan = await apiRequest(
+      "vehicles/" +
+        id +
+        "/emergency-preview?version=" +
+        encodeURIComponent(vehicle.version),
+    );
+    if (seq !== fleetDialogSequence || !canAccess("fleet.write")) return;
+    pendingFleetEmergency = { plan, key: crypto.randomUUID() };
+    const detail = (r) =>
+      `درخواست ${faNum(r.requestId)}: ${esc(r.origin)} ← ${esc(r.destination)} · ${esc(formatRouteDate(r.date))}، ${esc(r.time)}`;
+    document.getElementById("modalRoot").innerHTML =
+      `<div class="modal-overlay"><section class="modal-box"><div class="modal-head"><h2 class="modal-title">پیش‌نمایش مدیریت بحران</h2><button class="modal-close" onclick="closeModal()">×</button></div><div class="modal-body settings-stack"><p>خودروی مبدأ: <b>${esc(plan.source.name)}</b> — ${esc(plan.source.plate)}</p><p><b>با تأیید، خودروی مبدأ خارج از سرویس می‌شود.</b> فقط مأموریت‌های شروع‌نشدهٔ قابل‌انتقال جابه‌جا می‌شوند؛ ${faNum(plan.moves.length)} مورد از ${faNum(plan.total)} مأموریت باز.</p><p>انتخاب مقصد محافظه‌کارانه است: نوع خودرو، مالکیت/پیمان‌کار، قابلیت سرویس، یخچال، شیفت، ظرفیت روزانه و راننده بررسی می‌شوند. چون مدت سفر ثبت نشده، در این انتقال خودکار برای هر خودرو و راننده در هر روز حداکثر یک مأموریت باز پذیرفته می‌شود؛ موارد دیگر برای تصمیم دستی باقی می‌مانند. این پیشنهاد تضمین بهینه‌بودن مسیر یا تحویل فیزیکی بار نیست.</p><h3>انتقال‌های پیشنهادی</h3>${plan.moves.length ? plan.moves.map((r) => `<article class="settings-card"><p>${detail(r)}</p><p>مقصد: <b>${esc(r.targetName)}</b> — ${esc(r.targetPlate)}</p><p>راننده‌ها: ${r.drivers.map((d) => esc(d.name)).join("، ")}</p></article>`).join("") : "<p>انتقال خودکار مجازی پیدا نشد؛ تأیید فقط بحران و خارج‌ازسرویس‌شدن مبدأ را ثبت می‌کند.</p>"}<h3>موارد منتقل‌نشونده</h3>${plan.blocked.length ? plan.blocked.map((r) => `<article class="settings-card"><p>${detail(r)}</p><p>${esc(r.reason)}</p></article>`).join("") : "<p>موردی نیست.</p>"}<div class="form-group"><label for="fleetEmergencyReason">دلیل بحران (۵ تا ۵۰۰ نویسه)</label><textarea id="fleetEmergencyReason" maxlength="500" rows="3"></textarea></div><label class="checkbox-row"><input type="checkbox" id="fleetEmergencyAck">می‌پذیرم که مأموریت‌های درحال اجرا منتقل نمی‌شوند و تحویل حضوری و هماهنگی عملیاتی، نیازمند رسیدگی جداگانه است.</label></div><div class="modal-foot"><button class="btn-secondary" onclick="closeModal()">انصراف</button><button class="btn-secondary" onclick="handleCarEmergency(${Number(id)})">پیش‌نمایش تازه</button><button class="btn-primary" data-fleet-submit onclick="submitFleetEmergency()">ثبت بحران و اجرای انتقال‌های بالا</button></div></section></div>`;
+  } catch (error) {
+    fleetReadError(error, seq);
+  }
+}
+async function submitFleetEmergency() {
+  const pending = pendingFleetEmergency;
+  if (!pending || !canAccess("fleet.write")) return;
+  const reason = document.getElementById("fleetEmergencyReason").value.trim();
+  const acknowledged = document.getElementById("fleetEmergencyAck").checked;
+  if ([...reason].length < 5 || !acknowledged) {
+    showToast(
+      "warning",
+      "دلیل بحران را وارد و محدودیت‌های انتقال را تأیید کنید.",
+    );
+    return;
+  }
+  const plan = pending.plan;
+  await fleetWrite(
+    "vehicles/" + plan.source.id + "/emergency",
+    {
+      version: plan.source.version,
+      fingerprint: plan.fingerprint,
+      reason,
+      acknowledged,
+    },
+    pending.key,
+    (result) =>
+      showToast(
+        result.blocked.length ? "warning" : "success",
+        `مبدأ خارج از سرویس شد؛ ${faNum(result.moved)} از ${faNum(result.total)} مأموریت منتقل شد. ${faNum(result.blocked.length)} مورد نیازمند رسیدگی جداگانه است.`,
+      ),
+  );
+}
+async function fleetWrite(path, data, key, success) {
+  if (serverBusy) {
+    showToast("warning", "عملیات قبلی هنوز در حال انجام است.");
+    return;
+  }
+  const seq = fleetDialogSequence;
+  serverBusy = true;
+  document
+    .querySelectorAll("[data-fleet-submit]")
+    .forEach((b) => (b.disabled = true));
+  let committed = false;
+  try {
+    const result = await apiRequest(path, "POST", data, key);
+    committed = true;
+    if (seq === fleetDialogSequence) closeModal();
+    await refreshServerState();
+    render();
+    success(result);
+  } catch (error) {
+    if (error.status === 401) lockServerView();
+    if (error.status === 409 && seq === fleetDialogSequence) {
+      pendingFleetEmergency = null;
+      pendingFleetRestore = null;
+      try {
+        await refreshServerState();
+        render();
+      } catch {}
+      showToast(
+        "warning",
+        "اطلاعات تغییر کرده است؛ فهرست یا پیش‌نمایش را دوباره باز کنید.",
+      );
+    }
+    showToast(
+      committed ? "warning" : "error",
+      committed
+        ? "عملیات ثبت شد، ولی تازه‌سازی انجام نشد؛ پیش از تکرار وضعیت را بررسی کنید."
+        : error.message,
+    );
+  } finally {
+    serverBusy = false;
+    if (seq === fleetDialogSequence)
+      document
+        .querySelectorAll("[data-fleet-submit]")
+        .forEach(
+          (b) => (b.disabled = !pendingFleetEmergency && !pendingFleetRestore),
+        );
+  }
 }
 
 // ─── اعلان‌ها ───
@@ -1754,6 +1899,16 @@ function renderVehicles() {
   const grid = document.getElementById("vehiclesGrid");
   if (!grid) return; // اگر تب هنوز در DOM نیست
 
+  let deletedButton = document.getElementById("deletedVehiclesButton");
+  if (currentUser?.role === "admin" && !deletedButton) {
+    deletedButton = document.createElement("button");
+    deletedButton.id = "deletedVehiclesButton";
+    deletedButton.className = "btn-secondary";
+    deletedButton.style.marginBottom = "12px";
+    deletedButton.textContent = "خودروهای حذف‌شده / بازیابی";
+    deletedButton.onclick = () => openDeletedVehicles();
+    grid.before(deletedButton);
+  } else if (currentUser?.role !== "admin") deletedButton?.remove();
   const cars = getCarsWithSamples();
   grid.innerHTML = cars
     .map((car) => {
@@ -3375,6 +3530,7 @@ async function apiRequest(path, method = "GET", data, operationKey) {
   return result;
 }
 function lockServerView() {
+  document.getElementById("deletedVehiclesButton")?.remove();
   closeModal();
   closeGuide();
   currentUser = null;

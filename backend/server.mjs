@@ -1,3 +1,4 @@
+import { deletedVehicles, emergencyPreview } from "./fleet-recovery.mjs";
 import { assertHistorySchema, setHistoryActor } from "./history-context.mjs";
 import http from "node:http";
 import { randomBytes, timingSafeEqual } from "node:crypto";
@@ -162,6 +163,26 @@ const server = http.createServer(async (req, res) => {
         200,
         await historyPage(s, url.searchParams.get("before")),
       );
+    if (req.method === "GET" && path === "vehicles/deleted") {
+      return send(
+        res,
+        200,
+        await deletedVehicles(pool, s, url.searchParams.get("before")),
+      );
+    }
+    const emergencyMatch = /^vehicles\/(\d+)\/emergency-preview$/.exec(path);
+    if (req.method === "GET" && emergencyMatch) {
+      return send(
+        res,
+        200,
+        await emergencyPreview(
+          pool,
+          s,
+          emergencyMatch[1],
+          url.searchParams.get("version"),
+        ),
+      );
+    }
     if (!["POST", "PUT", "DELETE"].includes(req.method))
       fail(405, "روش درخواست مجاز نیست.");
     csrf(req, s);

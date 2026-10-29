@@ -1,3 +1,4 @@
+import { restoreVehicle, applyEmergency } from "./fleet-recovery.mjs";
 import { setHistoryActor } from "./history-context.mjs";
 import { rows, transaction, audit, json, pool } from "./db.mjs";
 import {
@@ -547,50 +548,14 @@ export async function mutate(u, method, path, b, key) {
       } else fail(404, "عملیات نامعتبر است.");
     } else if (kind === "vehicles") {
       manage(u);
-      if (action === "emergency" && method === "POST") {
-        const v = await resource(db, "vehicles", id);
-        version(v, b);
-        const open = await rows(
-          db,
-          "SELECT * FROM transport_requests WHERE vehicle_id=? AND status IN ('scheduled','enroute') ORDER BY id",
-          [v.id],
-        );
-        let moved = 0;
-        for (const r of open) {
-          const cars = await rows(
-            db,
-            "SELECT v.id,COUNT(r.id) n FROM vehicles v LEFT JOIN transport_requests r ON r.vehicle_id=v.id AND r.service_date=? AND r.status<>'cancelled' WHERE v.id<>? AND v.deleted_at IS NULL AND v.status='ok' GROUP BY v.id ORDER BY n/v.cargo_capacity,v.id",
-            [r.service_date, v.id],
-          );
-          for (const c of cars) {
-            let target;
-            try {
-              target = await available(
-                db,
-                c.id,
-                r.service_date,
-                r.service_time.slice(0, 5),
-                r.id,
-              );
-            } catch (e) {
-              if (e.status === 409) continue;
-              throw e;
-            }
-            await rows(
-              db,
-              "UPDATE transport_requests SET vehicle_id=?,vehicle_name=?,plate=?,version=version+1 WHERE id=?",
-              [target.id, target.name, target.plate, r.id],
-            );
-            await bindDrivers(db, r.id, target.id);
-            await event(db, u, r.id, "emergency_reassigned", {
-              from: v.id,
-              to: target.id,
-            });
-            moved++;
-            break;
-          }
-        }
-        response = { ok: true, moved, total: open.length };
+      if (action === "restore" && method === "POST" && parts.length === 3) {
+        return restoreVehicle(db, u, id, b);
+      } else if (
+        action === "emergency" &&
+        method === "POST" &&
+        parts.length === 3
+      ) {
+        return applyEmergency(db, u, id, b, key);
       } else if (method === "DELETE" && id) {
         const v = await resource(db, "vehicles", id);
         version(v, b);
