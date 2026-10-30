@@ -1,0 +1,56 @@
+{
+  "phase": "05B-dormant-scoped-access-foundation",
+  "base_commit": "a6c7158",
+  "target": "DB-upgrade / behmasir_upgrade_verify only",
+  "schema_after_explicit_install": 4,
+  "http_enforcement_enabled": false,
+  "persistent_test_accounts_created": false,
+  "existing_user_access_changed": false,
+  "unit_tests": {
+    "passed": 162,
+    "failed": 0
+  },
+  "real_mysql_install_and_acceptance": "NOT RUN in preparation environment; must be tested on isolated Windows database",
+  "files": [
+    {
+      "path": "backend/unit-access.mjs",
+      "sha256": "6cd759e531559bf6a76c566022275bf5d3e82084e095e98dcc0fa438477d09e9"
+    },
+    {
+      "path": "backend/access-install-plan.mjs",
+      "sha256": "ee13771689f612769c81a1b01081dd92b512648eea37ae461f76be2ee882d258"
+    },
+    {
+      "path": "backend/install-access.mjs",
+      "sha256": "58a68f8e82719e13fe68b1aa5a0641f11ea8121c880ed9a4d0c00f78a3790d65"
+    },
+    {
+      "path": "backend/verify-unit-access.mjs",
+      "sha256": "04c6f92dc8a65fdc3727809abf98093320e4585b3aa9381a5d539342c5fedefc"
+    },
+    {
+      "path": "sql/004_scoped_access_TEST_ONLY.sql",
+      "sha256": "1ade9e243806927719174e93868c58bd75e407f768bd35ecb4447a96fc6310e4"
+    },
+    {
+      "path": "sql/004_scoped_access_spec_TEST_ONLY.json",
+      "sha256": "8347872cdfe19f1f7323ee9299b4f93ff26ddb4950de242930034d35b8ba6c31"
+    },
+    {
+      "path": "windows/install-access.ps1",
+      "sha256": "ffaa8152e2258459bb1ed0e719ae4530f7a65eb6eec28bda79631580e2870940"
+    },
+    {
+      "path": "tests/unit-access.test.mjs",
+      "sha256": "7b6dc2e95ee6b14f3e35bfe5368206d981a7d3d87f210d9b31554dfe475648f0"
+    },
+    {
+      "path": "tests/access-foundation.test.mjs",
+      "sha256": "24f9ca7d54f74446bbf065518e18287c1ef65c96d5fd07a2f4032cf957b79f8d"
+    },
+    {
+      "path": "UPGRADE-PHASE-05B-ACCESS-FOUNDATION-FA.md",
+      "sha256": "66fda6b24d179b24920d5ca786bdf9e5da6e8cedadcf64c7533877751d9d379f"
+    }
+  ]
+}
