@@ -1,3 +1,9 @@
+import { scopedState, scopedHistory, scopedReports } from "./scoped-read.mjs";
+import {
+  assertScopedRoute,
+  freshReadUser,
+  readSnapshot,
+} from "./scoped-routes.mjs";
 import {
   listUnitRows,
   unitTree,
@@ -39,6 +45,9 @@ const version = (row, b) => {
     fail(409, "اطلاعات تغییر کرده است؛ صفحه را تازه و دوباره بررسی کنید.");
 };
 export async function publicUser(db, u) {
+  const [roleTitle] = await rows(db, "SELECT title FROM roles WHERE code=?", [
+    u.role_code,
+  ]);
   const vs = await rows(
     db,
     "SELECT vehicle_id FROM user_vehicles WHERE user_id=?",
@@ -56,6 +65,7 @@ export async function publicUser(db, u) {
     name: u.name,
     username: u.username,
     role: u.role_code,
+    roleTitle: roleTitle?.title || u.role_code,
     active: !!u.active,
     unit: u.unit_name || null,
     vehicleIds: vs.map((x) => x.vehicle_id),
@@ -113,16 +123,19 @@ export function visibility(u, alias = "r") {
   if (manager(u)) return ["1=1", []];
   if (u.role_code === "requester")
     return [`${alias}.requester_user_id=?`, [u.id]];
+  if (u.role_code !== "driver")
+    fail(403, "نقش حساب برای این مسیر پشتیبانی نمی‌شود.");
   return [
     `EXISTS(SELECT 1 FROM request_drivers rd WHERE rd.request_id=${alias}.id AND rd.user_id=?)`,
     [u.id],
   ];
 }
 export async function snapshot(u) {
-  const c = await pool.getConnection();
-  try {
-    await c.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
-    await c.beginTransaction();
+  return readSnapshot(pool, async (c) => {
+    u = await freshReadUser(c, u);
+    if (u.role_code === "unit_manager") {
+      return scopedState(c, u, requestDTO);
+    }
     const [vis, args] = visibility(u);
     const vehicles =
       u.role_code === "driver"
@@ -190,7 +203,6 @@ export async function snapshot(u) {
     const revision = (
       await rows(c, "SELECT revision FROM app_meta WHERE id=1")
     )[0].revision;
-    await c.commit();
     return {
       revision,
       vehicles: vehicles.map(vehicleDTO),
@@ -211,25 +223,33 @@ export async function snapshot(u) {
       currentUser: users.find((x) => x.id === u.id),
       capacityUsage: usage.map((x) => ({ ...x, used: Number(x.used) })),
     };
-  } catch (e) {
-    await c.rollback();
-    throw e;
-  } finally {
-    c.release();
-  }
+  });
 }
-export async function historyPage(u, before) {
-  const [vis, args] = visibility(u);
-  const id = integer(before);
-  const list = await rows(
-    pool,
-    `SELECT r.* FROM transport_requests r WHERE ${vis} AND r.status='delivered' AND r.id<? ORDER BY r.id DESC LIMIT 201`,
-    [...args, id],
-  );
-  return {
-    items: list.slice(0, 200).map(requestDTO),
-    cursor: list.length > 200 ? list[199].id : null,
-  };
+export async function historyPage(session, before) {
+  return readSnapshot(pool, async (db) => {
+    const u = await freshReadUser(db, session);
+    if (u.role_code === "unit_manager")
+      return scopedHistory(db, u, before, requestDTO);
+    const [vis, args] = visibility(u),
+      id = integer(before);
+    const list = await rows(
+      db,
+      `SELECT r.* FROM transport_requests r WHERE ${vis} AND r.status='delivered' AND r.id<? ORDER BY r.id DESC LIMIT 201`,
+      [...args, id],
+    );
+    return {
+      items: list.slice(0, 200).map(requestDTO),
+      cursor: list.length > 200 ? list[199].id : null,
+    };
+  });
+}
+export async function unitReports(session) {
+  return readSnapshot(pool, async (db) => {
+    const u = await freshReadUser(db, session);
+    if (u.role_code !== "unit_manager")
+      fail(403, "این مسیر مخصوص مشاهدهٔ واحدی است.");
+    return scopedReports(db, u);
+  });
 }
 async function available(db, vehicleId, date, time, except = 0) {
   const v = (
@@ -302,6 +322,7 @@ export async function mutate(u, method, path, b, key, clientIp = null) {
     if (!fresh?.active || fresh.auth_version !== u.auth_version)
       fail(401, "نشست معتبر نیست.");
     u = fresh;
+    assertScopedRoute(u, method, path);
     await setHistoryActor(db, u.id);
     let response = { ok: true };
     const parts = path.split("/").filter(Boolean),
@@ -694,6 +715,11 @@ export async function mutate(u, method, path, b, key, clientIp = null) {
         ).length === 0
       )
         fail(409, "آخرین مدیر فعال باید حفظ شود.");
+      if (prev?.role_code === "unit_manager")
+        fail(
+          409,
+          "مدیریت حسابِ محدوده‌دار هنوز در فرم قدیمی کاربران پشتیبانی نمی‌شود.",
+        );
       let unitId = null;
       if (role === "requester") {
         const unit = (

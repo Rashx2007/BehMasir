@@ -75,13 +75,11 @@ test("private installer uses masked local input and service/branch/backup guards
   assert.match(n, /process.stdin/);
   assert.doesNotMatch(n, /console\.error\(e\.message\)/);
 });
-test("new evaluator is deliberately not wired into legacy HTTP application yet", async () => {
-  for (const p of [
-    "backend/server.mjs",
-    "backend/domain.mjs",
-    "public/app.js",
-  ]) {
-    const s = await read(p);
-    assert.doesNotMatch(s, /from ["']\.\/unit-access\.mjs["']/);
-  }
+test("HTTP integration now requires schema four while the installer remains account-free", async () => {
+  const server = await read("backend/server.mjs");
+  assert.match(server, /await assertUnitAccessSchema\(pool\)/);
+  assert(
+    server.indexOf("await assertUnitAccessSchema(pool)") <
+      server.indexOf("server.listen("),
+  );
 });

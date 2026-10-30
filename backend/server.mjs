@@ -1,3 +1,5 @@
+import { assertScopedRoute, SCOPED_READ_VERSION } from "./scoped-routes.mjs";
+import { assertUnitAccessSchema } from "./unit-access.mjs";
 import { assertUnitTreeSchema } from "./unit-tree.mjs";
 import {
   attemptLogin,
@@ -14,7 +16,7 @@ import http from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import { pool, rows, transaction, audit } from "./db.mjs";
 import { hash, fail, passwordHash, verifyPassword } from "./core.mjs";
-import { snapshot, historyPage, mutate } from "./domain.mjs";
+import { snapshot, historyPage, unitReports, mutate } from "./domain.mjs";
 import { assertVehicleTypesSchema } from "./vehicle-types.mjs";
 import { sessionCookieName } from "./session-config.mjs";
 const ORIGIN = process.env.APP_ORIGIN;
@@ -143,7 +145,10 @@ const server = http.createServer(async (req, res) => {
     if (!url.pathname.startsWith("/api/")) fail(404, "مسیر پیدا نشد.");
     if (req.method === "GET" && path === "health") {
       await rows(pool, "SELECT 1");
-      return send(res, 200, { ok: true });
+      return send(res, 200, {
+        ok: true,
+        scopedUnitReadVersion: SCOPED_READ_VERSION,
+      });
     }
     if (req.method === "POST" && path === "login") {
       let credentials;
@@ -160,7 +165,18 @@ const server = http.createServer(async (req, res) => {
     }
     const s = await session(req);
     if (!s) fail(401, "دوباره وارد حساب شوید.");
+    assertScopedRoute(s, req.method, path);
     if (req.method === "GET" && path === "state") {
+      // Never use revision-only cache for scoped users: direct grant revocation
+      // may not change app_meta. Recompute both access and data on every read.
+      if (s.role_code === "unit_manager")
+        return send(res, 200, {
+          ...(await snapshot(s)),
+          csrfToken: s.csrf_token,
+          sessionExpiresAt: new Date(
+            s.expires_at.replace(" ", "T") + "Z",
+          ).getTime(),
+        });
       const rev = (
         await rows(pool, "SELECT revision FROM app_meta WHERE id=1")
       )[0].revision;
@@ -173,6 +189,8 @@ const server = http.createServer(async (req, res) => {
         ).getTime(),
       });
     }
+    if (req.method === "GET" && path === "unit-reports")
+      return send(res, 200, await unitReports(s));
     if (req.method === "GET" && path === "history")
       return send(
         res,
@@ -213,9 +231,11 @@ const server = http.createServer(async (req, res) => {
       const ph = await passwordHash(b.newPassword);
       await transaction(async (db) => {
         const fresh = (
-          await rows(db, "SELECT auth_version FROM users WHERE id=?", [s.id])
+          await rows(db, "SELECT auth_version,active FROM users WHERE id=?", [
+            s.id,
+          ])
         )[0];
-        if (!fresh || fresh.auth_version !== s.auth_version)
+        if (!fresh || !fresh.active || fresh.auth_version !== s.auth_version)
           fail(409, "حساب تغییر کرده است؛ دوباره وارد شوید.");
         await setHistoryActor(db, s.id);
         await rows(
@@ -305,6 +325,7 @@ try {
   await assertVehicleTypesSchema(pool);
   await assertHistorySchema(pool);
   await assertUnitTreeSchema(pool);
+  await assertUnitAccessSchema(pool);
 } catch (e) {
   await pool.end();
   throw e;

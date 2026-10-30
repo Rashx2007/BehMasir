@@ -29,7 +29,7 @@ test("unit forms send versions and numeric/null parents and exclude descendants 
   assert.match(s, /esc\(r.path\)/);
   assert.match(s, /esc\(r.name\)/);
   assert.match(s, /esc\(parent.name\)/);
-  assert.match(s, /دسترسی‌های محدوده‌دار هنوز فعال نشده‌اند/);
+  assert.match(s, /مشاهدهٔ واحدی فقط برای حساب‌های دارای انتساب صریح/);
 });
 test("UI validates tree DTO and clears prior-session unit records", async () => {
   const s = await read("public/app.js");

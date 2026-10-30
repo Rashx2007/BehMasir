@@ -513,6 +513,7 @@ function render() {
   else document.getElementById("requestsTbody").replaceChildren();
   if (allowedTabs().includes("history")) renderHistory();
   else document.getElementById("historyTbody").replaceChildren();
+  renderUnitOverview();
   renderUsersPanel();
   renderUnitsPanel();
   renderMissions();
@@ -841,7 +842,13 @@ function renderRequests() {
   const cars = getCarsWithSamples();
   const carMap = Object.fromEntries(cars.map((c) => [c.id, c]));
   const rows = samples
-    .filter((s) => canSeeSample(s) && s.date >= todayStr())
+    .filter(
+      (s) =>
+        canSeeSample(s) &&
+        (currentUser?.role === "unit_manager"
+          ? ["scheduled", "enroute"].includes(s.progress)
+          : s.date >= todayStr()),
+    )
     .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
   tbody.innerHTML =
     rows.length === 0
@@ -871,9 +878,10 @@ function renderRequests() {
           <td class="req-route">${esc(s.origin)} ← ${esc(s.destination)}${s.unit ? `<div class="req-unit">${esc(s.unit)}</div>` : ""}</td>
           <td><span class="time-chip">${esc(s.time)}</span></td>
           <td><span class="badge ${stInfo[1]}">${stInfo[0]}</span></td>
-          <td><span class="req-car"><span class="legend-dot" style="background:${color}"></span>${car ? esc(car.name) : "—"}</span></td>
+          <td><span class="req-car"><span class="legend-dot" style="background:${color}"></span>${car ? esc(car.name) : esc(s.carName || "—")}</span></td>
                     <td><span class="req-actions">
             ${canDeliverSample(s) && s.status !== "delivered" ? `<button class="icon-btn success" title="ثبت تحویل" onclick="deliverSample(${s.id})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg></button>` : ""}
+            ${currentUser?.role === "unit_manager" && canAccess("requests.read") ? `<button class="quiet-button" onclick="showUnitRequestDetails(${s.id})">جزئیات</button>` : ""}
             ${canDeleteSample(s) ? `<button class="icon-btn danger" title="حذف" onclick="deleteSample(${s.id})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>` : ""}
           </span></td>
         </tr>`;
@@ -2461,6 +2469,12 @@ const shownGuides = new Set();
 function canAccess(permission) {
   if (!currentUser || !currentUser.active || sessionExpiresAt <= Date.now())
     return false;
+  if (currentUser.role === "unit_manager")
+    return (
+      currentUser.access?.enforced === true &&
+      ["requests.read", "reports.read"].includes(permission) &&
+      currentUser.access.permissions.includes(permission)
+    );
   const rule = ROLE_RULES[currentUser.role];
   return (
     !!rule &&
@@ -2476,9 +2490,13 @@ function requireAccess(permission) {
   return false;
 }
 function allowedTabs() {
-  return currentUser && sessionExpiresAt > Date.now()
-    ? ROLE_RULES[currentUser.role]?.tabs || []
-    : [];
+  if (!currentUser || sessionExpiresAt <= Date.now()) return [];
+  if (currentUser.role === "unit_manager")
+    return [
+      "unit-overview",
+      ...(canAccess("requests.read") ? ["requests", "history"] : []),
+    ];
+  return ROLE_RULES[currentUser.role]?.tabs || [];
 }
 function isFleetManager() {
   return canAccess("requests.manage");
@@ -2508,6 +2526,8 @@ function canDeliverSample(record) {
   );
 }
 function clearFleetContent() {
+  if (centersLayer) centersLayer.clearLayers();
+  clearDraft();
   [
     "statsBar",
     "carsGrid",
@@ -2522,6 +2542,7 @@ function clearProtectedContent() {
   [
     "requestsTbody",
     "historyTbody",
+    "unitOverviewPanel",
     "usersPanel",
     "unitsPanel",
     "missionsPanel",
@@ -2540,6 +2561,22 @@ function userDisplayName(user) {
 }
 function applyRoleVisibility() {
   const tabs = allowedTabs();
+  if (!tabs.includes(currentTab)) currentTab = tabs[0] || "";
+  document.getElementById("tab-requests").querySelector(".form-card").hidden =
+    !canAccess("requests.create");
+  document
+    .querySelector("#tab-requests .req-layout")
+    .classList.toggle("read-only", currentUser?.role === "unit_manager");
+  document.querySelector("#tab-requests .req-list-head > span").textContent =
+    currentUser?.role === "unit_manager"
+      ? "درخواست‌های باز محدوده"
+      : "درخواست‌های امروز و پیش‌رو";
+  document
+    .querySelectorAll(".tab-btn[data-tab]")
+    .forEach((b) => b.classList.toggle("active", b.dataset.tab === currentTab));
+  document
+    .querySelectorAll(".tab-panel")
+    .forEach((p) => p.classList.toggle("active", p.id === "tab-" + currentTab));
   document.body.dataset.auth = currentUser ? "open" : "locked";
   document.getElementById("loginView").hidden = !!currentUser;
   document.querySelectorAll(".tab-btn[data-tab]").forEach((button) => {
@@ -2553,7 +2590,9 @@ function applyRoleVisibility() {
   const name = currentUser
     ? String(userDisplayName(currentUser) || "").trim()
     : "";
-  const role = currentUser ? ROLE_LABELS[currentUser.role] : "";
+  const role = currentUser
+    ? currentUser.roleTitle || ROLE_LABELS[currentUser.role] || "نقش ناشناخته"
+    : "";
   userLabel.textContent = currentUser
     ? name === role
       ? name
@@ -2750,7 +2789,7 @@ function renderUnitsPanel() {
     el.replaceChildren();
     return;
   }
-  el.innerHTML = `<div class="section-heading"><div><span class="eyebrow">ساختار سازمانی</span><h2>واحدهای درخواست‌کننده</h2><p>واحدها می‌توانند مستقل یا زیرمجموعهٔ واحد دیگر باشند. دسترسی‌های محدوده‌دار هنوز فعال نشده‌اند.</p></div></div>
+  el.innerHTML = `<div class="section-heading"><div><span class="eyebrow">ساختار سازمانی</span><h2>واحدهای درخواست‌کننده</h2><p>واحدها می‌توانند مستقل یا زیرمجموعهٔ واحد دیگر باشند. مشاهدهٔ واحدی فقط برای حساب‌های دارای انتساب صریح فعال می‌شود؛ مدیریت درخت مجوز جداگانه دارد.</p></div></div>
   <div class="management-card"><form class="unit-create-form" onsubmit="event.preventDefault();addUnit()">
   <div class="form-group"><label for="newUnitName">نام واحد جدید</label><input id="newUnitName" type="text" maxlength="100" required></div>
   <div class="form-group"><label for="newUnitParent">واحد بالادست</label><select id="newUnitParent">${unitParentOptions()}</select></div>
@@ -2765,6 +2804,46 @@ function renderUnitsPanel() {
 }
 
 // ─── مدیریت حساب‌ها فقط برای مدیر سیستم ───
+function renderUnitOverview() {
+  const el = document.getElementById("unitOverviewPanel");
+  if (currentUser?.role !== "unit_manager") {
+    el.replaceChildren();
+    return;
+  }
+  const names = serverScopeUnits.map((u) => esc(u.name)).join("، ");
+  const stats = serverScopeReport;
+  const labels = {
+    scheduled: "زمان‌بندی‌شده",
+    enroute: "در حال اجرا",
+    delivered: "تحویل‌شده",
+    cancelled: "لغوشده",
+  };
+  el.innerHTML =
+    `<div class="section-heading"><div><span class="eyebrow">مشاهدهٔ محدوده‌دار</span><h2>گزارش واحد</h2><p>واحدهای مجاز: ${names || "هیچ محدودهٔ فعالی تعیین نشده است."}</p><p>این مرحله فقط مشاهده است؛ ایجاد، تأیید، ویرایش و تخصیص مجاز نیست.</p></div></div>` +
+    (canAccess("reports.read") && stats
+      ? `<div class="management-card"><h3>آمار درخواست‌های محدوده — تمام تاریخ‌ها</h3><p>کل درخواست‌ها: <b>${faNum(stats.total)}</b></p><div class="unit-report-summary">${Object.entries(
+          labels,
+        )
+          .map(
+            ([key, title]) =>
+              `<div><span>${title}</span><strong>${faNum(stats.byStatus[key] || 0)}</strong></div>`,
+          )
+          .join(
+            "",
+          )}</div><div class="unit-report-scroll"><table class="req-table"><thead><tr><th>واحد</th><th>کل درخواست‌ها</th></tr></thead><tbody>${stats.byUnit.map((r) => `<tr><td>${esc(r.name)}</td><td>${faNum(r.total)}</td></tr>`).join("") || '<tr><td colspan="2">محدوده‌ای برای گزارش وجود ندارد.</td></tr>'}</tbody></table></div></div>`
+      : '<div class="management-card"><p>مجوز مشاهدهٔ گزارش برای این حساب فعال نیست.</p></div>');
+}
+function showUnitRequestDetails(id) {
+  if (currentUser?.role !== "unit_manager" || !requireAccess("requests.read"))
+    return;
+  const r =
+    samples.find((x) => x.id === id) || history.find((x) => x.id === id);
+  if (!r) return;
+  closeModal();
+  document.getElementById("modalRoot").innerHTML =
+    `<div class="modal-overlay"><section class="modal-box"><div class="modal-head"><h2 class="modal-title">جزئیات درخواست ${faNum(r.id)}</h2><button class="modal-close" aria-label="بستن" onclick="closeModal()">×</button></div><div class="modal-body settings-stack"><p>مبدأ: ${esc(r.origin)}</p><p>مقصد: ${esc(r.destination)}</p><p>واحد زمان ثبت: ${esc(r.unit || "—")}</p><p>تاریخ: ${esc(formatRouteDate(r.date))} — ساعت: ${esc(r.time)}</p><p>خودرو: ${esc(r.carName || "—")} — پلاک: ${esc(r.plate || "—")}</p><p>شناسهٔ ثبت‌کننده: ${faNum(r.requesterUserId)}</p></div></section></div>`;
+}
+
 function renderUsersPanel() {
   const el = document.getElementById("usersPanel");
   if (!canAccess("users.write")) {
@@ -2772,10 +2851,15 @@ function renderUsersPanel() {
     return;
   }
   el.innerHTML = `<div class="section-heading"><div><span class="eyebrow">مدیریت دسترسی کاربران</span><h2>کاربران سامانه</h2><p>نقش و تخصیص خودرو، بخش‌های قابل استفاده را مشخص می‌کند.</p></div><button class="btn-primary" onclick="openUserForm(null)">افزودن کاربر</button></div>
-  <div class="management-card user-grid">${appUsers.map((u) => `<article class="account-card"><div class="account-title"><h3>${esc(userDisplayName(u))}</h3><span class="badge ${u.active ? "badge-green" : "badge-red"}">${u.active ? "فعال" : "غیرفعال"}</span></div><p dir="ltr" class="username">${esc(u.username)}</p><p>${ROLE_LABELS[u.role] || "نقش نامعتبر"}</p>${u.role === "requester" ? `<p>واحد: ${esc(u.unit || "—")}</p>` : ""}${u.role === "driver" ? `<p>خودرو: ${esc((u.vehicleIds || []).map((id) => vehicles.find((v) => v.id === id)?.name || "حذف‌شده").join("، ") || "بدون تخصیص")}</p>` : ""}<button class="quiet-button" onclick="openUserForm(${u.id})">ویرایش و تغییر رمز</button></article>`).join("")}</div>`;
+  <div class="management-card user-grid">${appUsers.map((u) => `<article class="account-card"><div class="account-title"><h3>${esc(userDisplayName(u))}</h3><span class="badge ${u.active ? "badge-green" : "badge-red"}">${u.active ? "فعال" : "غیرفعال"}</span></div><p dir="ltr" class="username">${esc(u.username)}</p><p>${esc(u.roleTitle || ROLE_LABELS[u.role] || "نقش نامعتبر")}</p>${u.role === "requester" ? `<p>واحد: ${esc(u.unit || "—")}</p>` : ""}${u.role === "driver" ? `<p>خودرو: ${esc((u.vehicleIds || []).map((id) => vehicles.find((v) => v.id === id)?.name || "حذف‌شده").join("، ") || "بدون تخصیص")}</p>` : ""}<button class="quiet-button" ${!Object.hasOwn(ROLE_LABELS, u.role) ? 'disabled title="مدیریت این نقش در فرم قدیمی پشتیبانی نمی‌شود"' : ""} onclick="openUserForm(${u.id})">ویرایش و تغییر رمز</button></article>`).join("")}</div>`;
 }
 function openUserForm(id) {
   if (!requireAccess("users.write")) return;
+  const foundUser = appUsers.find((x) => x.id === id);
+  if (foundUser && !Object.hasOwn(ROLE_LABELS, foundUser.role)) {
+    showToast("warning", "مدیریت این نقش در فرم قدیمی پشتیبانی نمی‌شود.");
+    return;
+  }
   closeModal();
   const u = appUsers.find((x) => x.id === id) || {
     name: "",
@@ -2872,6 +2956,19 @@ const SECTION_GUIDES = {
   ],
 };
 
+function sectionGuideInfo(tab) {
+  if (currentUser?.role === "unit_manager" && tab === "requests")
+    return [
+      "مشاهدهٔ درخواست‌های محدوده",
+      "در این بخش فقط درخواست‌های واحدهای مجاز خود را مشاهده می‌کنید. در این مرحله ایجاد، تأیید، ویرایش، حذف یا تخصیص درخواست مجاز نیست.",
+    ];
+  if (currentUser?.role === "unit_manager" && tab === "history")
+    return [
+      "سوابق سفرهای محدوده",
+      "در این بخش سوابق درخواست‌های تحویل‌شدهٔ واحدهای مجاز خود را می‌بینید؛ نه صرفاً درخواست‌های ثبت‌شده توسط خودتان.\nسوابق زیرواحدها فقط در صورت قرارگرفتن در محدودهٔ مجاز قابل مشاهده است.\nدر این بخش فقط می‌توانید سوابق را ببینید؛ امکان تغییر یا حذف آن‌ها وجود ندارد.",
+    ];
+  return SECTION_GUIDES[tab];
+}
 function guideDismissed(tab) {
   return (userPreferences(currentUser).dismissedGuides || []).includes(tab);
 }
@@ -2880,7 +2977,7 @@ function refreshGuides() {
   if (!currentUser) return;
   allowedTabs().forEach((tab) => {
     if (guideDismissed(tab)) return;
-    const info = SECTION_GUIDES[tab];
+    const info = sectionGuideInfo(tab);
     if (!info) return;
     const banner = document.createElement("aside");
     banner.className = "guide-banner";
@@ -2908,12 +3005,12 @@ function maybeShowGuide(tab) {
 }
 function showSectionGuide(tab = currentTab) {
   if (!currentUser || !allowedTabs().includes(tab)) return;
-  const info = SECTION_GUIDES[tab];
+  const info = sectionGuideInfo(tab);
   if (!info) return;
   window.Pickers?.closeAll();
   document.getElementById("guideRoot").dataset.guideTab = tab;
   document.getElementById("guideRoot").innerHTML =
-    `<div class="guide-overlay"><section class="guide-dialog" role="dialog" aria-modal="true" aria-labelledby="guideTitle"><button type="button" class="modal-close guide-close" aria-label="بستن راهنما" onclick="requestCloseGuide()">×</button><span class="eyebrow">راهنمای ${esc(ROLE_LABELS[currentUser.role])}</span><h2 id="guideTitle">${esc(info[0])}</h2><p>${esc(info[1])}</p><label class="checkbox-row"><input id="guideDontShow" type="checkbox">این راهنما دوباره نمایش داده نشود</label><div class="guide-foot"><button class="btn-primary" onclick="finishGuide('${tab}')">متوجه شدم</button></div></section></div>`;
+    `<div class="guide-overlay"><section class="guide-dialog" role="dialog" aria-modal="true" aria-labelledby="guideTitle"><button type="button" class="modal-close guide-close" aria-label="بستن راهنما" onclick="requestCloseGuide()">×</button><span class="eyebrow">راهنمای ${esc(currentUser.roleTitle || ROLE_LABELS[currentUser.role] || "کاربر")}</span><h2 id="guideTitle">${esc(info[0])}</h2><p>${esc(info[1])}</p><label class="checkbox-row"><input id="guideDontShow" type="checkbox">این راهنما دوباره نمایش داده نشود</label><div class="guide-foot"><button class="btn-primary" onclick="finishGuide('${tab}')">متوجه شدم</button></div></section></div>`;
   document.querySelector(".guide-foot button").focus();
 }
 function finishGuide(tab) {
@@ -3553,6 +3650,8 @@ enhancePasswordInputs();
 enhanceTooltips();
 
 // این متغیرها فقط در حافظهٔ صفحه‌اند؛ دادهٔ عملیاتی در localStorage ذخیره نمی‌شود.
+let serverScopeReport = null;
+let serverScopeUnits = [];
 let serverDashboard = {
   topVehicles: [],
   topUnits: [],
@@ -3611,6 +3710,16 @@ function lockServerView() {
   sessionExpiresAt = 0;
   serverCsrf = "";
   serverRevision = -1;
+  serverScopeReport = null;
+  serverScopeUnits = [];
+  serverDashboard = {
+    topVehicles: [],
+    topUnits: [],
+    topCenters: [],
+    days: [],
+    recentTotal: 0,
+  };
+  document.getElementById("unitInput").value = "";
   serverVehicleTypes = [];
   for (const code of Object.keys(BODY_TYPE_LABELS))
     delete BODY_TYPE_LABELS[code];
@@ -3620,12 +3729,46 @@ function lockServerView() {
   centers = [];
   requesterUnits = [];
   serverUnitRecords = [];
+  serverCapacityUsage = [];
+  serverHistoryCursor = null;
+  usedRequesterUnits = [];
   appUsers = [];
   render();
   document.getElementById("loginPassword").value = "";
 }
 async function refreshServerState() {
-  const d = await apiRequest("state?revision=" + serverRevision);
+  let d;
+  try {
+    d = await apiRequest("state?revision=" + serverRevision);
+  } catch (error) {
+    if (currentUser?.role === "unit_manager") lockServerView();
+    throw error;
+  }
+  if (currentUser?.role === "unit_manager" && d.unchanged) {
+    lockServerView();
+    throw new Error(
+      "بک‌اند مشاهدهٔ واحدی باید مجوزها را دوباره بررسی کند؛ ورود مجدد لازم است.",
+    );
+  }
+  if (
+    d.currentUser?.role === "unit_manager" &&
+    (d.scopedReadVersion !== 1 ||
+      d.currentUser.access?.enforced !== true ||
+      !Array.isArray(d.currentUser.access.permissions) ||
+      !Array.isArray(d.currentUser.access.unitIds))
+  ) {
+    lockServerView();
+    throw new Error("نسخهٔ بک‌اند و رابطِ مشاهدهٔ واحدی هماهنگ نیست.");
+  }
+  if (
+    d.currentUser &&
+    (currentUser?.id !== d.currentUser.id ||
+      JSON.stringify(currentUser?.access) !==
+        JSON.stringify(d.currentUser.access))
+  ) {
+    closeModal();
+    closeGuide();
+  }
   serverCsrf = d.csrfToken;
   sessionExpiresAt = d.sessionExpiresAt;
   if (d.unchanged) return false;
@@ -3655,7 +3798,15 @@ async function refreshServerState() {
   for (const type of serverVehicleTypes)
     BODY_TYPE_LABELS[type.code] = type.title;
   serverRevision = d.revision;
-  serverDashboard = d.dashboard || serverDashboard;
+  serverDashboard = d.dashboard || {
+    topVehicles: [],
+    topUnits: [],
+    topCenters: [],
+    days: [],
+    recentTotal: 0,
+  };
+  serverScopeReport = d.scopeReport || null;
+  serverScopeUnits = d.scopeUnits || [];
   vehicles = d.vehicles;
   samples = d.samples;
   history = d.history;
@@ -3719,7 +3870,23 @@ function queueServerPreferences(value) {
 async function loadMoreServerHistory() {
   if (!serverHistoryCursor) return;
   try {
+    const scopeUserId =
+      currentUser?.role === "unit_manager" ? currentUser.id : null;
     const d = await apiRequest("history?before=" + serverHistoryCursor);
+    if (scopeUserId !== null) {
+      const sameScope =
+        currentUser?.id === scopeUserId &&
+        currentUser.role === "unit_manager" &&
+        JSON.stringify(d.access?.permissions) ===
+          JSON.stringify(currentUser.access?.permissions) &&
+        JSON.stringify(d.access?.unitIds) ===
+          JSON.stringify(currentUser.access?.unitIds);
+      if (!sameScope) {
+        await refreshServerState();
+        render();
+        return;
+      }
+    }
     const ids = new Set(history.map((x) => x.id));
     history.push(...d.items.filter((x) => !ids.has(x.id)));
     const sampleIds = new Set(samples.map((x) => x.id));
@@ -3728,6 +3895,7 @@ async function loadMoreServerHistory() {
     renderHistory();
     if (currentUser?.role === "driver") renderMissions();
   } catch (e) {
+    if (currentUser?.role === "unit_manager") lockServerView();
     showToast("error", e.message);
   }
 }
@@ -3753,8 +3921,9 @@ setInterval(async () => {
     !currentUser ||
     document.hidden ||
     serverBusy ||
-    document.querySelector(".modal-overlay,.guide-overlay") ||
-    document.activeElement?.matches("input,select,textarea")
+    (currentUser.role !== "unit_manager" &&
+      (document.querySelector(".modal-overlay,.guide-overlay") ||
+        document.activeElement?.matches("input,select,textarea")))
   )
     return;
   try {

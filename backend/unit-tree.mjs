@@ -161,9 +161,16 @@ export async function deleteUnit(db, idValue, body) {
         "SELECT id FROM transport_requests WHERE unit_id=? LIMIT 1",
         [id],
       )
+    ).length ||
+    (
+      await rows(
+        db,
+        "SELECT id FROM unit_role_assignments WHERE unit_id=? AND active=1 LIMIT 1",
+        [id],
+      )
     ).length
   )
-    fail(409, "واحد دارای سابقه یا کاربر است.");
+    fail(409, "واحد دارای سابقه، کاربر یا انتساب دسترسی فعال است.");
   await rows(db, "UPDATE units SET deleted_at=UTC_TIMESTAMP(3) WHERE id=?", [
     id,
   ]);

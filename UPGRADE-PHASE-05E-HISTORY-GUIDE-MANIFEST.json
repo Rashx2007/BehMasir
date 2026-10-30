@@ -1,0 +1,41 @@
+{
+  "phase": "05E-HISTORY-GUIDE-TEST-ONLY",
+  "revision": 2,
+  "base_remote_commit": "16e5efb",
+  "requires": "installed and tested previous phase05E guide package",
+  "schema_version": 4,
+  "sql_migration_required": false,
+  "backend_executable_change": false,
+  "css_change": false,
+  "validation": {
+    "node_tests": 204,
+    "failures": 0,
+    "browser": "real Chromium + mocked API; three-paragraph wording and rendered line breaks at 1280/390 pixels; prior scoped UI checks passed"
+  },
+  "files": [
+    {
+      "path": "public/app.js",
+      "bytes": 163514,
+      "sha256": "22fcfd521d333532d7584627bd5fb2f6f4085fa0bd178973cd3360845c506530",
+      "previous_phase05e_sha256": "6dacbc10c010f964a5d7a8ebef9b74ad3fa7961ab2367a7274f47a1ba1b8cb58"
+    },
+    {
+      "path": "backend/test-manager-runtime.json",
+      "bytes": 1034,
+      "sha256": "5a2ec03d28543f9b72f6f8369d7e004eb0590a350740b3e5b6e806677af88355",
+      "previous_phase05e_sha256": "7b64ea67fe9b8e819dd64220cf4e21756b890bda67657e70d7be380772efb201"
+    },
+    {
+      "path": "tests/scoped-guide.test.mjs",
+      "bytes": 2461,
+      "sha256": "7f75f7898332d47494e3893964e6a30f058466b1ac96978119b81ba86a6bbe1a",
+      "previous_phase05e_sha256": "213ef57574eb6f906b44311f2f11063a0d69a8aa5fc97a64d3896883df23e77d"
+    },
+    {
+      "path": "UPGRADE-PHASE-05E-HISTORY-GUIDE-FA.md",
+      "bytes": 8229,
+      "sha256": "173c1c4b1bb900b7f7fe277d9464a718b72a69bc7d4346b1cc662966b5a5b120",
+      "previous_phase05e_sha256": "2846253cc21c99faf11b31bffdbecae6f36e3178c38a90627721dae5800c8eb9"
+    }
+  ]
+}

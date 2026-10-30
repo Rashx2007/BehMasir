@@ -22,6 +22,7 @@ function fixture(list = sample()) {
   const state = {
     records: structuredClone(list),
     users: [],
+    assignments: [],
     requests: [],
     calls: [],
     next: 100,
@@ -65,6 +66,12 @@ function fixture(list = sample()) {
       if (sql.startsWith("SELECT id FROM transport_requests"))
         return [
           state.requests.filter((r) => r.unit_id === args[0]).slice(0, 1),
+        ];
+      if (sql.startsWith("SELECT id FROM unit_role_assignments"))
+        return [
+          state.assignments
+            .filter((r) => r.unit_id === args[0] && r.active === 1)
+            .slice(0, 1),
         ];
       if (sql.startsWith("UPDATE units SET deleted_at=")) {
         const r = state.records.find((r) => r.id === args[0]);
@@ -319,4 +326,12 @@ test("rename treats hostile labels as bound data, not SQL or executable markup",
   const call = f.state.calls.find((c) => c.sql.startsWith("UPDATE"));
   assert.equal(call.sql, "UPDATE units SET name=? WHERE id=?");
   assert.deepEqual(call.args, [name, 2]);
+});
+
+test("unit with active scoped assignment cannot be soft-deleted", async () => {
+  const f = fixture([record(1)]);
+  f.state.assignments.push({ id: 1, unit_id: 1, active: 1 });
+  await assert.rejects(deleteUnit(f.db, 1, { version: 1 }), status(409));
+  f.state.assignments[0].active = 0;
+  await deleteUnit(f.db, 1, { version: 1 });
 });

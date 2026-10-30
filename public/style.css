@@ -3386,3 +3386,30 @@ label[for="fleetEmergencyReason"] {
     padding-inline-start: calc(0.5rem + var(--unit-depth, 0) * 0.5rem);
   }
 }
+
+/* Read-only unit scope; no fleet forms or editing controls. */
+.req-layout.read-only {
+  grid-template-columns: minmax(0, 1fr);
+}
+.unit-report-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 1rem;
+  margin-block: 1.25rem;
+}
+.unit-report-summary > div {
+  display: grid;
+  gap: 0.5rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.unit-report-summary strong {
+  font-size: 1.5rem;
+}
+.unit-report-scroll {
+  overflow-x: auto;
+}
+#unitOverviewPanel {
+  overflow-wrap: anywhere;
+}

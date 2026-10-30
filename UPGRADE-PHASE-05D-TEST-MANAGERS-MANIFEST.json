@@ -1,0 +1,94 @@
+{
+  "phase": "05D-TEST-MANAGERS-TEST-ONLY",
+  "base_commit": "16e5efb",
+  "requires": "copied and tested phase05C scoped-read package",
+  "target_database": "behmasir_upgrade_verify",
+  "schema_version": 4,
+  "sql_migration_required": false,
+  "new_dependencies": false,
+  "persistent_creation": "Only after explicit TEST-MANAGERS confirmation and private passwords via windows/create-test-managers.ps1",
+  "accounts": [
+    {
+      "username": "test_mgr_support",
+      "root_unit": 11,
+      "current_unit_ids": [
+        1,
+        3,
+        9,
+        11
+      ]
+    },
+    {
+      "username": "test_mgr_office",
+      "root_unit": 1,
+      "current_unit_ids": [
+        1
+      ]
+    }
+  ],
+  "validation": {
+    "node_tests": 203,
+    "node_failures": 0,
+    "browser": "real Chromium + mocked API; scoped guide and read controls passed",
+    "real_mysql_new_tools": "NOT RUN in preparation environment; must verify rollback before creating persistent accounts",
+    "powershell": "source reviewed and tested as text, NOT executed on preparation Linux host"
+  },
+  "files": [
+    {
+      "path": "backend/create-test-managers.mjs",
+      "bytes": 3185,
+      "sha256": "6f1b616c6b4f45ea6b3d5b5de86cd042bb50bf8a2d0244932ce6cb2d442707f4"
+    },
+    {
+      "path": "backend/test-manager-plan.mjs",
+      "bytes": 7948,
+      "sha256": "064a1f63fbc39d0831d95d3aa15881c5fd7a10142510a91a788c288474f38f41"
+    },
+    {
+      "path": "backend/test-manager-environment.mjs",
+      "bytes": 5470,
+      "sha256": "629ad6b1274911daceb0059f825ac1a9e5c2286d8906024e607d1568354e46c5"
+    },
+    {
+      "path": "backend/test-manager-runtime.json",
+      "bytes": 1034,
+      "sha256": "ba82a47d6cab2e457cc147087d4ac7076b3390240f45ef3bb66fd9e253bd502d"
+    },
+    {
+      "path": "backend/verify-test-managers.mjs",
+      "bytes": 7361,
+      "sha256": "f50c7c776b1fd74efa7ecd142c8399e7a74ddf55fedaad935d7a9abe2cc04fc0"
+    },
+    {
+      "path": "windows/create-test-managers.ps1",
+      "bytes": 3773,
+      "sha256": "dd2ea3fd6e488e311eaaed17589fe819d5c356bfadd6e4cd72bc1fcc77c790b5"
+    },
+    {
+      "path": "tests/test-manager-fixtures.mjs",
+      "bytes": 5066,
+      "sha256": "936e63854cc9996599e21c6265512265007d929a85f00fb3dd06e5adb4650511"
+    },
+    {
+      "path": "tests/test-manager-plan.test.mjs",
+      "bytes": 9271,
+      "sha256": "dee98310631a7b5a525689fd3f1e4057ccb672e4478e35ec92f8a259f209790b"
+    },
+    {
+      "path": "tests/test-manager-source.test.mjs",
+      "bytes": 3624,
+      "sha256": "7f623ce6e0c502c20b8795564ea02ad82f900a4a792f3668ce1e38332e3b9524"
+    },
+    {
+      "path": "public/app.js",
+      "bytes": 162888,
+      "sha256": "f971a9f5296e6c7dafbfa490fcb91a5492db4a5e652e4426ff2a0fbfe9adaa51",
+      "phase05c_sha256": "5cee7cb74d6f8ab4dd34fbe8f97217be5d389527babaebfad70feb19b685d8b7"
+    },
+    {
+      "path": "UPGRADE-PHASE-05D-TEST-MANAGERS-FA.md",
+      "bytes": 12824,
+      "sha256": "763f8cd59efdcada2cb0364101f0a880b4e88f662dd50e0da28ab1152315f38e"
+    }
+  ]
+}

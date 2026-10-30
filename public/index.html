@@ -87,6 +87,13 @@
 
       <nav class="header-nav">
         <button
+          class="tab-btn"
+          data-tab="unit-overview"
+          onclick="switchTab('unit-overview')"
+        >
+          گزارش واحد
+        </button>
+        <button
           class="tab-btn active"
           data-tab="dashboard"
           onclick="switchTab('dashboard')"
@@ -458,6 +465,9 @@
       </div>
     </section>
 
+    <section id="tab-unit-overview" class="tab-panel">
+      <div id="unitOverviewPanel"></div>
+    </section>
     <section id="tab-units" class="tab-panel">
       <div id="unitsPanel"></div>
     </section>

@@ -1,0 +1,122 @@
+{
+  "phase": "05C-scoped-read-http-TEST-ONLY",
+  "base_commit": "16e5efb",
+  "branch": "feature/org-workflow-audit",
+  "target_database": "behmasir_upgrade_verify",
+  "schema_version": 4,
+  "persistent_accounts_created": false,
+  "sql_migration_required": false,
+  "validation": {
+    "node_tests": 185,
+    "node_failures": 0,
+    "http": "real server/domain with mocked database and session lookup",
+    "browser": "real Chromium with mocked API; scoped and legacy tree checks passed",
+    "real_mysql": "NOT RUN in preparation environment; run verify-scoped-reads.mjs offline on isolated Windows test database"
+  },
+  "files": [
+    {
+      "path": "backend/domain.mjs",
+      "bytes": 30032,
+      "sha256": "3523d521afaa782fbd7d688b1110b0ad958e4b46bb2201f81553f1e9b4ddccde",
+      "base_sha256": "26abc5f7d72145e0e2e227413fb26c6f071c8ac46516a1744f5f166300572194"
+    },
+    {
+      "path": "backend/scoped-read.mjs",
+      "bytes": 5238,
+      "sha256": "dc849c12a4c0abff9a1f5afc4a5411d68eca8a32a36214d991ad91d7f19abd85"
+    },
+    {
+      "path": "backend/scoped-routes.mjs",
+      "bytes": 1657,
+      "sha256": "d3670430ef7df6ac612abdda93a95ff569abe9327c08a59a543a960f10883fbc"
+    },
+    {
+      "path": "backend/server.mjs",
+      "bytes": 11476,
+      "sha256": "f2b4697d675fc7d995a94fee0dba55a460be99cc11ee6bb2a1aa30fc0fea5ba5",
+      "base_sha256": "e5ba01e1b46ec91c2b6168d376b73a9681f7b8eb353f5f8443d4409129df4ddf"
+    },
+    {
+      "path": "backend/unit-tree.mjs",
+      "bytes": 7163,
+      "sha256": "1b5639f3fa8af80efab7c95612ca51ce672d556e994cee4597d20ca89c2ad675",
+      "base_sha256": "8050bbff89b6344c17b435eabfb8d881ec528beae2d85b41ca8a00ec3b2ff9dd"
+    },
+    {
+      "path": "backend/verify-scoped-reads.mjs",
+      "bytes": 13803,
+      "sha256": "f42c20c8a17c6d53f06ddb884fc2d4a9b975b4bcacfd64f3b3d3b69faca99786"
+    },
+    {
+      "path": "public/app.js",
+      "bytes": 162385,
+      "sha256": "5cee7cb74d6f8ab4dd34fbe8f97217be5d389527babaebfad70feb19b685d8b7",
+      "base_sha256": "3613526553d0d24a4a92d0ad309879198b6ab55150568fe46daebc3778b26ba4"
+    },
+    {
+      "path": "public/index.html",
+      "bytes": 16800,
+      "sha256": "d656255f301b10f4292fec8db459b1c5cb6004573dd2a60c8eb28d4f72064615",
+      "base_sha256": "6073351326318a8e1900aac26f2daae0a57025e0e8c9fdcb5aa480d94bd3fe7a"
+    },
+    {
+      "path": "public/style.css",
+      "bytes": 62942,
+      "sha256": "ed56a1cbc045f551a10558f9f3c03d34bfec318197245b28a4de941aaab7408d",
+      "base_sha256": "41b4d6162761bf6acac14f2780f4288558b66641fa2c497035b983495869d6d7"
+    },
+    {
+      "path": "tests/access-foundation.test.mjs",
+      "bytes": 3635,
+      "sha256": "9ec010832b1c472987ec768d2b2320d85fcca2d61ee92605a5c7ec071fb9aa58",
+      "base_sha256": "24f9ca7d54f74446bbf065518e18287c1ef65c96d5fd07a2f4032cf957b79f8d"
+    },
+    {
+      "path": "tests/scoped-http-worker.mjs",
+      "bytes": 2925,
+      "sha256": "c6d6ddfe3ee5c467144287dff57c2c115686c55741ebf4374f2d5e0bdfe93e41"
+    },
+    {
+      "path": "tests/scoped-http.test.mjs",
+      "bytes": 4305,
+      "sha256": "e36091095b42ba7207ab3da3c507cfdb119adbeb128beb2c286485cda7fd2e65"
+    },
+    {
+      "path": "tests/scoped-read-fixtures.mjs",
+      "bytes": 4238,
+      "sha256": "9abebb7688ca24410b8b80e833b961b92dbe919ea2f75cbe6a2162069aa92271"
+    },
+    {
+      "path": "tests/scoped-read.test.mjs",
+      "bytes": 5861,
+      "sha256": "180782ba6b5bedd664911d080a4b7089634dd2bf0e036266458d194d9592b913"
+    },
+    {
+      "path": "tests/scoped-routes.test.mjs",
+      "bytes": 3839,
+      "sha256": "0236d3d8761e6ed13bb9f57acf97b3ae4e4e1b5c796bcf06c308da4d92c13501"
+    },
+    {
+      "path": "tests/scoped-wiring.test.mjs",
+      "bytes": 3646,
+      "sha256": "25f4c7481573b1073afc300f61408577ed95108b6acfbf4bb599994ca7d627e2"
+    },
+    {
+      "path": "tests/unit-tree-source.test.mjs",
+      "bytes": 2560,
+      "sha256": "8d2194a460969178dc520d99f78afb81aabcc7cc7dd2c809a6edc49dc1204dda",
+      "base_sha256": "d2a145154670096866cdaf7ef641a0d59226363e4073fec979d89dc73934e94e"
+    },
+    {
+      "path": "tests/unit-tree.test.mjs",
+      "bytes": 12384,
+      "sha256": "f06be478be67e17e2031c806a6843a7ab7b05b50dacd4e6f870970dc455bbe50",
+      "base_sha256": "9f35210622c2ef353cc74b3a5c7e32ab8afdf34e7675c022ccacf59c68c28e06"
+    },
+    {
+      "path": "UPGRADE-PHASE-05C-SCOPED-READS-FA.md",
+      "bytes": 10680,
+      "sha256": "532411271f83bdaffe4055ddfa65a43894c779a3f1e2385eefccdcccf686c201"
+    }
+  ]
+}
