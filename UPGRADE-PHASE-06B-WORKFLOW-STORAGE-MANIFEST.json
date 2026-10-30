@@ -1,0 +1,51 @@
+{
+  "phase": "06B",
+  "base_commit": "9b74942",
+  "requires": "06A policy; current schema 4; stopped test API/HTTPS; recent backup",
+  "installed_schema": 5,
+  "activated": false,
+  "tests_preparation": {
+    "pass": 290,
+    "fail": 0,
+    "real_mysql_run": false,
+    "powershell_run": false
+  },
+  "files": [
+    {
+      "path": "backend/workflow-install-plan.mjs",
+      "sha256": "9a3cf1b046d701acbdacf2c894bb11c61665060ec94f2c8c8399b46e44896879"
+    },
+    {
+      "path": "backend/install-workflow.mjs",
+      "sha256": "d00a37a6689188cc87c8d0e16a4245d71c51e14999f14b943158ae2533f433b2"
+    },
+    {
+      "path": "backend/workflow-storage.mjs",
+      "sha256": "5b747042744b2e290bdf02dce5c0531fb55a16da9102c86b452193b8095feb9e"
+    },
+    {
+      "path": "backend/verify-workflow-storage.mjs",
+      "sha256": "5ad0edded0f96c15b2af42548d2323dfe100616ae5215094b4226658ad51e8ca"
+    },
+    {
+      "path": "sql/005_request_workflow_TEST_ONLY.sql",
+      "sha256": "2b6c829f27dbfa345cb32cd09dce4f5b109692f4f93222c78729ef8cd717dcb4"
+    },
+    {
+      "path": "sql/005_request_workflow_spec_TEST_ONLY.json",
+      "sha256": "9f4d23ca40d2fd72b8073bb19ad8b2898d2711afbf5cf9dd8525f4980b5d9f53"
+    },
+    {
+      "path": "tests/workflow-storage.test.mjs",
+      "sha256": "fd21bc826e5a1f554a3b9657de6e443a98ee8c5c582f33f8af21c25238477b11"
+    },
+    {
+      "path": "windows/install-workflow.ps1",
+      "sha256": "13e88c197243e053c5413f1c8b0649105cb646cb3217f9b2095caa0ae72c610b"
+    },
+    {
+      "path": "UPGRADE-PHASE-06B-WORKFLOW-STORAGE-FA.md",
+      "sha256": "a9ba30a01036a13777cd2fb421bb14eb908ebf0c82dc88d1b52347512349b5fb"
+    }
+  ]
+}

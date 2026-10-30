@@ -1,0 +1,106 @@
+{
+  "phase": "06C",
+  "base_commit": "9b74942",
+  "requires": "06A+06B copied; schema 5 installed; stopped upgrade API/HTTPS; test database only",
+  "schema": 5,
+  "automatic_activation": false,
+  "tests_preparation": {
+    "node_pass": 318,
+    "node_fail": 0,
+    "http": "real Node HTTP server with mock DB/session",
+    "browser": "Chromium: light/dark/colorful 1280/390; actual styled option selection, Space/Home/Enter, Escape preserves parent modal; calendar/time click regression and legacy scoped UI passed. API mocked.",
+    "real_mysql_new_verifier_run": false,
+    "powershell_run": false
+  },
+  "files": [
+    {
+      "path": "backend/domain.mjs",
+      "sha256": "15becc9a0a13870cb4ee9f52c5173a0a5fd14e85121162d8d89eda4f02b6fc47"
+    },
+    {
+      "path": "backend/server.mjs",
+      "sha256": "e6e8552593ad709f6ee4ff1923a3a7e8c8cfd22d010bd855b938e1486a111192"
+    },
+    {
+      "path": "backend/scoped-routes.mjs",
+      "sha256": "4a20116afa1a1dcf1768a0a66b5dd08a2b62f2287ea5fd0806d6efd993a9f0f0"
+    },
+    {
+      "path": "backend/workflow-storage.mjs",
+      "sha256": "3b2a7adca93dd046ed42f3f511a383c465e5faaf3b98c386bd339a46392175cd"
+    },
+    {
+      "path": "backend/workflow-http.mjs",
+      "sha256": "837f92e4c47f30793ad2a5da5f36b734ffa80a61f85fa0831acb254cf447d861"
+    },
+    {
+      "path": "backend/verify-workflow-http.mjs",
+      "sha256": "208b4b89a07a627fd3d9509ca819aee0c7b2230ad6eadbc1309d9b6e751a0acf"
+    },
+    {
+      "path": "backend/test-manager-runtime.json",
+      "sha256": "ccc78aec33925f7e516d7c26d27fbe97316d060170b96890fa13c25b47380226"
+    },
+    {
+      "path": "public/app.js",
+      "sha256": "910474ffdd1ebe2b52ce5956c0548b57f2bbfff14c60bf8b631055a68bfbcf1a"
+    },
+    {
+      "path": "public/index.html",
+      "sha256": "2b010a70d2642400a86b00551086a657d85a1d40a88cf6cdb5b3f4e75a3d2a1b"
+    },
+    {
+      "path": "public/style.css",
+      "sha256": "6aeccda1b5901f16afb43a38075677dd7a7cf92266f86a82d4c2bc6cdadc985a"
+    },
+    {
+      "path": "public/workflow.js",
+      "sha256": "86437022a7c61c32f5e45d8a78937823e607fc699339e3f82b101ef88c35986c"
+    },
+    {
+      "path": "tests/workflow-http-fixtures.mjs",
+      "sha256": "488b95500755e3fd52ecdc2c40c07de10463f26eaa690f54178662db8cf86821"
+    },
+    {
+      "path": "tests/workflow-http.test.mjs",
+      "sha256": "179d4e56e5d395d3480a8fe5861cf9ce4a9b497fffe33de69527cdfb7201106a"
+    },
+    {
+      "path": "tests/workflow-live-http-worker.mjs",
+      "sha256": "af6af1359c90af0830791019cb3cd74b1e068cb3cf0ad6d77d2a7c05ba7c4aec"
+    },
+    {
+      "path": "tests/workflow-live-http.test.mjs",
+      "sha256": "692baf689c33bfadbe777ecef008740f5a485ac3666c96be4394829fc30d027f"
+    },
+    {
+      "path": "UPGRADE-PHASE-06C-WORKFLOW-HTTP-UI-FA.md",
+      "sha256": "b191414ad43e16c175f81a66429d1ff5b6170cd9f0ac0eb7d6eccaddbe364193"
+    },
+    {
+      "path": "backend/verify-workflow-storage.mjs",
+      "sha256": "99ea4149938c686d595f5435fd1761b60a2081d2c6f4622588f9d407887aa6c7"
+    },
+    {
+      "path": "tests/workflow-storage.test.mjs",
+      "sha256": "bb313d1648c85720ea42d124dbd77a78c55b3755214d8c24d7f7bfc03ef491a3"
+    },
+    {
+      "path": "UPGRADE-PHASE-06C4-WORKFLOW-PICKERS-FA.md",
+      "sha256": "32a3aac2d12944d803e7a76aba8e8f8b9fb24cac85c013ec38d5e33e259e315f"
+    },
+    {
+      "path": "UPGRADE-PHASE-06C5-SELECT-STYLE-FA.md",
+      "sha256": "4e84be276a3942aea139282475351bc6f2237d877a905f3d0f6109a4b05ec981"
+    }
+  ],
+  "revision": "06C.5 progressive native select popup styling",
+  "prior_user_reported_acceptance": {
+    "node_pass_before_patch": 316,
+    "real_mysql_route_service_checks": 78,
+    "rollback_reported": true,
+    "live_workflow_enabled_by_user": true,
+    "windows_picker_fix_verified": false
+  },
+  "select_compatibility": "appearance: base-select progressive enhancement; unsupported browsers retain native select"
+}

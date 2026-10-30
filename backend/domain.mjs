@@ -1,3 +1,4 @@
+import { assertLegacyWorkflowGate, assertWorkflowUnitDeletion, assertWorkflowLegacyReassignment } from './workflow-http.mjs';
 import { scopedState, scopedHistory, scopedReports } from "./scoped-read.mjs";
 import {
   assertScopedRoute,
@@ -330,6 +331,7 @@ export async function mutate(u, method, path, b, key, clientIp = null) {
       id = parts[1],
       action = parts[2];
     if (method === "POST" && kind === "requests" && !id) {
+      await assertLegacyWorkflowGate(db);
       if (!["admin", "dispatcher", "requester"].includes(u.role_code))
         fail(403, "امکان ثبت درخواست ندارید.");
       if (typeof key !== "string" || !/^[0-9a-f-]{36}$/.test(key))
@@ -462,6 +464,7 @@ export async function mutate(u, method, path, b, key, clientIp = null) {
         );
         await event(db, u, r.id, "delivered");
       } else if (method === "POST" && action === "reassign") {
+        await assertWorkflowLegacyReassignment(db, r.id);
         manage(u);
         if (!["scheduled", "enroute"].includes(r.status))
           fail(409, "درخواست باز نیست.");
@@ -513,6 +516,7 @@ export async function mutate(u, method, path, b, key, clientIp = null) {
       ) {
         response = await renameUnit(db, id, b);
       } else if (method === "DELETE" && id && !action && parts.length === 2) {
+        await assertWorkflowUnitDeletion(db, id);
         response = await deleteUnit(db, id, b);
       } else fail(404, "عملیات نامعتبر است.");
     } else if (kind === "centers") {
@@ -699,6 +703,7 @@ export async function mutate(u, method, path, b, key, clientIp = null) {
           "dispatcher",
           "requester",
           "driver",
+          "unit_manager",
         ]),
         active = bool(b.active);
       if (Number(id) === u.id && (!active || role !== "admin"))
@@ -715,13 +720,13 @@ export async function mutate(u, method, path, b, key, clientIp = null) {
         ).length === 0
       )
         fail(409, "آخرین مدیر فعال باید حفظ شود.");
-      if (prev?.role_code === "unit_manager")
+      if (prev?.role_code === "unit_manager" && role !== "unit_manager")
         fail(
           409,
-          "مدیریت حسابِ محدوده‌دار هنوز در فرم قدیمی کاربران پشتیبانی نمی‌شود.",
+          "تبدیل نقش مدیر واحد از این فرم مجاز نیست؛ ابتدا انتساب‌ها و مجوزهای او را بررسی کنید.",
         );
       let unitId = null;
-      if (role === "requester") {
+      if (["requester", "unit_manager"].includes(role)) {
         const unit = (
           await rows(
             db,
@@ -731,6 +736,12 @@ export async function mutate(u, method, path, b, key, clientIp = null) {
         )[0];
         if (!unit) fail(422, "واحد معتبر نیست.");
         unitId = unit.id;
+      }
+      if (prev && prev.unit_id !== unitId) {
+        const [schema] = await rows(db, 'SELECT MAX(version) version FROM schema_migrations');
+        const priorScopes = await rows(db, 'SELECT id FROM unit_role_assignments WHERE user_id=? AND active=1 LIMIT 1', [prev.id]);
+        const workflowScopes = Number(schema.version) >= 5 ? await rows(db, 'SELECT id FROM workflow_grants WHERE user_id=? AND active=1 LIMIT 1', [prev.id]) : [];
+        if (priorScopes.length || workflowScopes.length) fail(409, 'پیش از تغییر واحد کاربر، انتساب‌ها و مجوزهای فعال او باید بررسی و تعیین تکلیف شوند.');
       }
       const ids =
         role === "driver"

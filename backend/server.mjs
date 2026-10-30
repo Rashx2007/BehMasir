@@ -1,3 +1,6 @@
+import { workflowView, workflowMutation } from './workflow-http.mjs';
+import { assertWorkflowSchema } from './workflow-install-plan.mjs';
+import { readSnapshot } from './scoped-routes.mjs';
 import { assertScopedRoute, SCOPED_READ_VERSION } from "./scoped-routes.mjs";
 import { assertUnitAccessSchema } from "./unit-access.mjs";
 import { assertUnitTreeSchema } from "./unit-tree.mjs";
@@ -138,6 +141,7 @@ async function login(req, res, b) {
     activeLogins--;
   }
 }
+let workflowAvailable = false;
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, "http://127.0.0.1"),
@@ -148,6 +152,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, {
         ok: true,
         scopedUnitReadVersion: SCOPED_READ_VERSION,
+        workflowVersion: workflowAvailable ? 1 : 0,
       });
     }
     if (req.method === "POST" && path === "login") {
@@ -166,12 +171,19 @@ const server = http.createServer(async (req, res) => {
     const s = await session(req);
     if (!s) fail(401, "دوباره وارد حساب شوید.");
     assertScopedRoute(s, req.method, path);
+    if (req.method === "GET" && path === "workflow") {
+      if (!workflowAvailable) fail(409, 'ساختار گردش درخواست نصب نشده است.');
+      return send(res, 200, await readSnapshot(pool, db => workflowView(db, s, url.searchParams.get('before'))));
+    }
     if (req.method === "GET" && path === "state") {
+      const wf = workflowAvailable ? (await rows(pool, 'SELECT enabled FROM workflow_settings WHERE id=1'))[0] : null;
+      const workflowFlags = { workflowVersion: workflowAvailable ? 1 : 0, workflowEnabled: Number(wf?.enabled) === 1 };
       // Never use revision-only cache for scoped users: direct grant revocation
       // may not change app_meta. Recompute both access and data on every read.
       if (s.role_code === "unit_manager")
         return send(res, 200, {
           ...(await snapshot(s)),
+          ...workflowFlags,
           csrfToken: s.csrf_token,
           sessionExpiresAt: new Date(
             s.expires_at.replace(" ", "T") + "Z",
@@ -183,6 +195,7 @@ const server = http.createServer(async (req, res) => {
       const same = String(url.searchParams.get("revision")) === String(rev);
       return send(res, 200, {
         ...(same ? { unchanged: true } : await snapshot(s)),
+        ...workflowFlags,
         csrfToken: s.csrf_token,
         sessionExpiresAt: new Date(
           s.expires_at.replace(" ", "T") + "Z",
@@ -275,6 +288,11 @@ const server = http.createServer(async (req, res) => {
       });
       return send(res, 200, { ok: true });
     }
+    if (path.startsWith('workflow/')) {
+      if (!workflowAvailable) fail(409, 'ساختار گردش درخواست نصب نشده است.');
+      if (req.method !== 'POST') fail(405, 'روش گردش درخواست مجاز نیست.');
+      return send(res, 200, await transaction(db => workflowMutation(db, s, path, b, req.headers['idempotency-key'])));
+    }
     return send(
       res,
       200,
@@ -326,6 +344,11 @@ try {
   await assertHistorySchema(pool);
   await assertUnitTreeSchema(pool);
   await assertUnitAccessSchema(pool);
+  const [workflowSchema] = await rows(pool, 'SELECT MAX(version) version FROM schema_migrations');
+  if (Number(workflowSchema.version) >= 5) {
+    await assertWorkflowSchema(pool);
+    workflowAvailable = true;
+  }
 } catch (e) {
   await pool.end();
   throw e;

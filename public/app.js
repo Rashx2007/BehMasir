@@ -513,6 +513,7 @@ function render() {
   else document.getElementById("requestsTbody").replaceChildren();
   if (allowedTabs().includes("history")) renderHistory();
   else document.getElementById("historyTbody").replaceChildren();
+  if (typeof renderWorkflowPanel === "function") renderWorkflowPanel();
   renderUnitOverview();
   renderUsersPanel();
   renderUnitsPanel();
@@ -1266,6 +1267,7 @@ async function confirmRouteOption() {
 }
 
 function closeModal() {
+  if (typeof destroyWorkflowPickers === "function") destroyWorkflowPickers();
   fleetDialogSequence++;
   fleetDeletedItems = [];
   pendingFleetRestore = null;
@@ -1508,6 +1510,7 @@ function switchTab(name) {
     .forEach((panel) =>
       panel.classList.toggle("active", panel.id === `tab-${name}`),
     );
+  if (name === "workflow" && typeof renderWorkflowPanel === "function") renderWorkflowPanel(true);
   if (name === "centers") initCentersMap();
   if (name === "vehicles") renderVehicles();
   refreshGuides();
@@ -2428,6 +2431,7 @@ const ROLE_LABELS = {
   dispatcher: "مسئول ناوگان",
   requester: "درخواست‌کننده",
   driver: "راننده",
+  unit_manager: "مدیر واحد",
 };
 const ROLE_RULES = {
   admin: {
@@ -2490,13 +2494,15 @@ function requireAccess(permission) {
   return false;
 }
 function allowedTabs() {
+  const workflowTabs = typeof serverWorkflowVersion !== 'undefined' && serverWorkflowVersion === 1 ? ['workflow'] : [];
   if (!currentUser || sessionExpiresAt <= Date.now()) return [];
   if (currentUser.role === "unit_manager")
     return [
       "unit-overview",
       ...(canAccess("requests.read") ? ["requests", "history"] : []),
+      ...workflowTabs,
     ];
-  return ROLE_RULES[currentUser.role]?.tabs || [];
+  return [...(ROLE_RULES[currentUser.role]?.tabs || []), ...workflowTabs];
 }
 function isFleetManager() {
   return canAccess("requests.manage");
@@ -2563,7 +2569,7 @@ function applyRoleVisibility() {
   const tabs = allowedTabs();
   if (!tabs.includes(currentTab)) currentTab = tabs[0] || "";
   document.getElementById("tab-requests").querySelector(".form-card").hidden =
-    !canAccess("requests.create");
+    !canAccess("requests.create") || (typeof serverWorkflowEnabled !== "undefined" && serverWorkflowEnabled);
   document
     .querySelector("#tab-requests .req-layout")
     .classList.toggle("read-only", currentUser?.role === "unit_manager");
@@ -2744,7 +2750,7 @@ function openUnitParentForm(id) {
     `<div class="modal-overlay"><div class="modal-box"><div class="modal-head"><h2 class="modal-title">تغییر والد واحد</h2><button class="modal-close" aria-label="بستن" onclick="closeModal()">×</button></div>
   <form onsubmit="event.preventDefault();saveUnitParent(${r.id},${r.version})"><div class="modal-body form-grid">
   <p class="full">واحد: <strong>${esc(r.name)}</strong></p>
-  <p class="full">این عملیات، واحد و تمام زیرواحدهای آن را در ساختار جابه‌جا می‌کند؛ در این مرحله مجوزها و مسیر تأیید درخواست‌ها تغییر نمی‌کنند.</p>
+  <p class="full">این عملیات، واحد و تمام زیرواحدهای آن را در ساختار جابه‌جا می‌کند؛ محدوده‌های دارای مجوز زیرواحدها ممکن است تغییر کنند؛ پس از جابه‌جایی، دسترسی‌ها و تأییدکنندگان را بررسی کنید.</p>
   <div class="form-group full"><label for="unitParentEdit">واحد بالادست</label><select id="unitParentEdit">${unitParentOptions(r.id, r.parentId)}</select></div>
   </div><div class="modal-foot"><button type="button" class="btn-secondary" onclick="closeModal()">انصراف</button><button type="submit" class="btn-primary">ذخیرهٔ والد</button></div></form></div></div>`;
 }
@@ -2891,7 +2897,7 @@ function openUserForm(id) {
 }
 function toggleUserFields() {
   const role = document.getElementById("uf_role").value;
-  document.getElementById("uf_unitWrap").hidden = role !== "requester";
+  document.getElementById("uf_unitWrap").hidden = !["requester", "unit_manager"].includes(role);
   document.getElementById("uf_vehicleWrap").hidden = role !== "driver";
 }
 async function saveUserForm(id) {
@@ -2903,7 +2909,7 @@ async function saveUserForm(id) {
     active: document.getElementById("uf_active").checked,
     password: document.getElementById("uf_password").value,
     unit:
-      role === "requester" ? document.getElementById("uf_unit").value : null,
+      ["requester", "unit_manager"].includes(role) ? document.getElementById("uf_unit").value : null,
     vehicleIds:
       role === "driver"
         ? [...document.querySelectorAll("[name=uf_vehicle]:checked")].map((x) =>
@@ -2957,6 +2963,9 @@ const SECTION_GUIDES = {
 };
 
 function sectionGuideInfo(tab) {
+  if (typeof serverWorkflowEnabled !== "undefined" && serverWorkflowEnabled && tab === "requests")
+    return ["مأموریت‌های ثبت‌شده", "درخواست جدید و تأییدهای آن را در بخش «گردش درخواست» انجام دهید. این بخش مأموریت‌های تخصیص‌یافته را در محدودهٔ مجاز شما نشان می‌دهد؛ عملیات اجرایی نیز به مجوز حساب شما وابسته است."];
+
   if (currentUser?.role === "unit_manager" && tab === "requests")
     return [
       "مشاهدهٔ درخواست‌های محدوده",
@@ -3474,6 +3483,10 @@ document.addEventListener(
   "keydown",
   (event) => {
     const dialog = topDialog();
+    // Let the browser handle arrows, Tab and Escape in an open real select.
+    // In particular Escape must close the picker, not discard its parent form.
+    if (typeof CSS !== "undefined" && CSS.supports("appearance", "base-select") &&
+        document.querySelector("select:open")) return;
     if (event.key === "Escape") {
       hideAppTooltip();
       if (!dialog) return;
@@ -3650,6 +3663,8 @@ enhancePasswordInputs();
 enhanceTooltips();
 
 // این متغیرها فقط در حافظهٔ صفحه‌اند؛ دادهٔ عملیاتی در localStorage ذخیره نمی‌شود.
+let serverWorkflowVersion = 0;
+let serverWorkflowEnabled = false;
 let serverScopeReport = null;
 let serverScopeUnits = [];
 let serverDashboard = {
@@ -3703,6 +3718,9 @@ async function apiRequest(path, method = "GET", data, operationKey) {
   return result;
 }
 function lockServerView() {
+  serverWorkflowVersion = 0;
+  serverWorkflowEnabled = false;
+  if (typeof clearWorkflowView === 'function') clearWorkflowView();
   document.getElementById("deletedVehiclesButton")?.remove();
   closeModal();
   closeGuide();
@@ -3769,6 +3787,8 @@ async function refreshServerState() {
     closeModal();
     closeGuide();
   }
+  serverWorkflowVersion = d.workflowVersion === 1 ? 1 : 0;
+  serverWorkflowEnabled = d.workflowEnabled === true;
   serverCsrf = d.csrfToken;
   sessionExpiresAt = d.sessionExpiresAt;
   if (d.unchanged) return false;

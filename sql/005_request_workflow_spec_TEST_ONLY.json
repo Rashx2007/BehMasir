@@ -1,0 +1,75 @@
+{
+  "schema_version": 5,
+  "sql_sha256": "2b6c829f27dbfa345cb32cd09dce4f5b109692f4f93222c78729ef8cd717dcb4",
+  "statement_count": 18,
+  "tables": {
+    "workflow_settings": [
+      "id",
+      "enabled",
+      "org_enabled",
+      "contractor_enabled",
+      "version",
+      "created_at",
+      "edited_at"
+    ],
+    "workflow_grants": [
+      "id",
+      "user_id",
+      "unit_id",
+      "capability",
+      "include_descendants",
+      "relationship",
+      "active",
+      "version",
+      "created_at",
+      "edited_at"
+    ],
+    "workflow_requests": [
+      "id",
+      "creator_id",
+      "beneficiary_id",
+      "unit_id",
+      "origin_id",
+      "destination_id",
+      "service_date",
+      "service_time",
+      "needs",
+      "state",
+      "content_version",
+      "unit_approval",
+      "fleet_approval",
+      "ownership",
+      "transport_request_id",
+      "version",
+      "created_at",
+      "edited_at"
+    ]
+  },
+  "triggers": [
+    "bh5_ws_bi",
+    "bh5_ws_bu",
+    "bh5_ws_bd",
+    "bh5_ws_ai",
+    "bh5_ws_au",
+    "bh5_wg_bi",
+    "bh5_wg_bu",
+    "bh5_wg_bd",
+    "bh5_wg_ai",
+    "bh5_wg_au",
+    "bh5_wr_bi",
+    "bh5_wr_bu",
+    "bh5_wr_bd",
+    "bh5_wr_ai",
+    "bh5_wr_au"
+  ],
+  "capabilities": [
+    "workflow.create",
+    "workflow.create_for_others",
+    "workflow.configure_approvers",
+    "workflow.unit_approve",
+    "workflow.fleet_approve",
+    "workflow.dispatch.org",
+    "workflow.dispatch.contractor",
+    "workflow.configure_sections"
+  ]
+}

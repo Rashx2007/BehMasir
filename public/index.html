@@ -9,7 +9,7 @@
       rel="stylesheet"
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
     />
-    <link rel="stylesheet" href="style.css?v=14050723-mysql" />
+    <link rel="stylesheet" href="style.css?v=14050808-selects-06C5" />
   </head>
   <body data-auth="locked">
     <main id="loginView" class="login-layout">
@@ -86,6 +86,7 @@
       </div>
 
       <nav class="header-nav">
+        <button class="tab-btn" data-tab="workflow" onclick="switchTab('workflow')" hidden>گردش درخواست</button>
         <button
           class="tab-btn"
           data-tab="unit-overview"
@@ -465,6 +466,7 @@
       </div>
     </section>
 
+    <section id="tab-workflow" class="tab-panel"><div id="workflowPanel"></div></section>
     <section id="tab-unit-overview" class="tab-panel">
       <div id="unitOverviewPanel"></div>
     </section>
@@ -483,6 +485,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <div id="toastRoot"></div>
     <script src="pickers.js?v=14050723-mysql"></script>
-    <script src="app.js?v=14050723-mysql"></script>
+    <script src="app.js?v=14050808-selects-06C5"></script>
+    <script src="workflow.js?v=14050808-workflow-pickers-06C4"></script>
   </body>
 </html>

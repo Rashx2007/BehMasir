@@ -19,7 +19,9 @@ export function assertScopedRoute(user, method, path) {
   if (!roles.has(user.role_code)) fail(403, "نقش حساب پشتیبانی نمی‌شود.");
   if (
     user.role_code === "unit_manager" &&
-    !scopedRoutes.has(method + " " + path)
+    !scopedRoutes.has(method + " " + path) &&
+    !(method === 'GET' && path === 'workflow') &&
+    !(method === 'POST' && /^(workflow\/(settings|grants|requests)|workflow\/grants\/\d+|workflow\/requests\/\d+\/(unit_approve|fleet_approve|return|reject|dispatch_return|dispatch|edit|resubmit|cancel))$/.test(path))
   )
     fail(
       403,
