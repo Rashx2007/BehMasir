@@ -3328,3 +3328,61 @@ label[for="fleetEmergencyReason"] {
   line-height: 1.8;
   text-align: right;
 }
+
+/* Organization tree: logical spacing preserves RTL and small screens. */
+.unit-create-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: end;
+  margin-block-end: 1.25rem;
+}
+.unit-create-form .form-group {
+  min-width: 0;
+}
+.unit-create-form input,
+.unit-create-form select {
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+}
+.unit-tree-list {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.unit-tree-row {
+  gap: 1rem;
+  padding-inline-start: calc(1rem + var(--unit-depth, 0) * 1.1rem);
+}
+.unit-tree-info {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.unit-tree-info small {
+  opacity: 0.8;
+}
+.unit-tree-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+.unit-tree-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+@media (max-width: 640px) {
+  .unit-create-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .unit-tree-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    padding-inline-start: calc(0.5rem + var(--unit-depth, 0) * 0.5rem);
+  }
+}

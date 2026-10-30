@@ -1,0 +1,53 @@
+{
+  "phase": "05A-v2-unit-tree-and-rename",
+  "base_commit": "4f053a2",
+  "cumulative_replacement_for": "05A-unit-tree-foundation",
+  "target": "DB-upgrade / behmasir_upgrade_verify only",
+  "schema_change": false,
+  "scoped_RBAC_implemented": false,
+  "approval_workflow_implemented": false,
+  "unit_tests": {
+    "passed": 136,
+    "failed": 0
+  },
+  "local_browser": "passed with mocked API: rename escape, stale version, current descendant parent label, tree/mobile/RTL/modal regression",
+  "real_mysql_acceptance": "old tree version passed 28 checks on user system; v2 rename verifier not yet run on real MySQL",
+  "files": [
+    {
+      "path": "backend/domain.mjs",
+      "sha256": "26abc5f7d72145e0e2e227413fb26c6f071c8ac46516a1744f5f166300572194"
+    },
+    {
+      "path": "backend/server.mjs",
+      "sha256": "e5ba01e1b46ec91c2b6168d376b73a9681f7b8eb353f5f8443d4409129df4ddf"
+    },
+    {
+      "path": "backend/unit-tree.mjs",
+      "sha256": "8050bbff89b6344c17b435eabfb8d881ec528beae2d85b41ca8a00ec3b2ff9dd"
+    },
+    {
+      "path": "backend/verify-unit-tree.mjs",
+      "sha256": "e95b1b1afc711ef1560c643614f26e3db4f1e2aac27ba170effd5cd8a1c227a1"
+    },
+    {
+      "path": "public/app.js",
+      "sha256": "3613526553d0d24a4a92d0ad309879198b6ab55150568fe46daebc3778b26ba4"
+    },
+    {
+      "path": "public/style.css",
+      "sha256": "41b4d6162761bf6acac14f2780f4288558b66641fa2c497035b983495869d6d7"
+    },
+    {
+      "path": "tests/unit-tree.test.mjs",
+      "sha256": "9f35210622c2ef353cc74b3a5c7e32ab8afdf34e7675c022ccacf59c68c28e06"
+    },
+    {
+      "path": "tests/unit-tree-source.test.mjs",
+      "sha256": "d2a145154670096866cdaf7ef641a0d59226363e4073fec979d89dc73934e94e"
+    },
+    {
+      "path": "UPGRADE-PHASE-05A-UNIT-TREE-FA.md",
+      "sha256": "e30545b8a5249f787045aa2366b7af5c89d8c98d5628fb3370d5d556238ce7ae"
+    }
+  ]
+}

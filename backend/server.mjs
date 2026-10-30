@@ -1,3 +1,4 @@
+import { assertUnitTreeSchema } from "./unit-tree.mjs";
 import {
   attemptLogin,
   authEvent,
@@ -303,6 +304,7 @@ server.headersTimeout = 10000;
 try {
   await assertVehicleTypesSchema(pool);
   await assertHistorySchema(pool);
+  await assertUnitTreeSchema(pool);
 } catch (e) {
   await pool.end();
   throw e;

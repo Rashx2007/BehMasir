@@ -2662,6 +2662,7 @@ async function addUnit() {
   if (
     await serverWrite("units", "POST", {
       name: document.getElementById("newUnitName").value.trim(),
+      parentId: unitParentInput("newUnitParent"),
     })
   )
     document.getElementById("newUnitName").value = "";
@@ -2676,8 +2677,72 @@ function removeUnit(index) {
     r = serverUnitRecords.find((x) => x.name === name);
   if (r)
     openLocalConfirm("حذف واحد", `واحد «${name}» حذف شود؟`, () =>
-      serverWrite("units/" + r.id, "DELETE", {}, true),
+      serverWrite("units/" + r.id, "DELETE", { version: r.version }, true),
     );
+}
+function unitParentInput(field) {
+  const value = document.getElementById(field).value;
+  return value === "" ? null : Number(value);
+}
+function unitParentOptions(excludedId = null, selectedId = null) {
+  return (
+    `<option value="" ${selectedId === null ? "selected" : ""}>بدون والد — سطح اول</option>` +
+    serverUnitRecords
+      .filter((r) => r.id !== excludedId && !r.ancestorIds.includes(excludedId))
+      .map(
+        (r) =>
+          `<option value="${r.id}" ${r.id === selectedId ? "selected" : ""}>${esc(r.path)}</option>`,
+      )
+      .join("")
+  );
+}
+function openUnitParentForm(id) {
+  if (!requireAccess("units.write")) return;
+  const r = serverUnitRecords.find((x) => x.id === id);
+  if (!r) return;
+  closeModal();
+  document.getElementById("modalRoot").innerHTML =
+    `<div class="modal-overlay"><div class="modal-box"><div class="modal-head"><h2 class="modal-title">تغییر والد واحد</h2><button class="modal-close" aria-label="بستن" onclick="closeModal()">×</button></div>
+  <form onsubmit="event.preventDefault();saveUnitParent(${r.id},${r.version})"><div class="modal-body form-grid">
+  <p class="full">واحد: <strong>${esc(r.name)}</strong></p>
+  <p class="full">این عملیات، واحد و تمام زیرواحدهای آن را در ساختار جابه‌جا می‌کند؛ در این مرحله مجوزها و مسیر تأیید درخواست‌ها تغییر نمی‌کنند.</p>
+  <div class="form-group full"><label for="unitParentEdit">واحد بالادست</label><select id="unitParentEdit">${unitParentOptions(r.id, r.parentId)}</select></div>
+  </div><div class="modal-foot"><button type="button" class="btn-secondary" onclick="closeModal()">انصراف</button><button type="submit" class="btn-primary">ذخیرهٔ والد</button></div></form></div></div>`;
+}
+async function saveUnitParent(id, expectedVersion) {
+  await serverWrite(
+    "units/" + id + "/parent",
+    "PUT",
+    {
+      version: expectedVersion,
+      parentId: unitParentInput("unitParentEdit"),
+    },
+    true,
+  );
+}
+function openUnitRenameForm(id) {
+  if (!requireAccess("units.write")) return;
+  const r = serverUnitRecords.find((x) => x.id === id);
+  if (!r) return;
+  closeModal();
+  document.getElementById("modalRoot").innerHTML =
+    `<div class="modal-overlay"><div class="modal-box"><div class="modal-head"><h2 class="modal-title">تغییر نام واحد</h2><button class="modal-close" aria-label="بستن" onclick="closeModal()">×</button></div>
+  <form onsubmit="event.preventDefault();saveUnitRename(${r.id},${r.version})"><div class="modal-body form-grid">
+  <p class="full">نام فعلی: <strong>${esc(r.name)}</strong></p>
+  <p class="full">شناسه، کاربران و ارتباط‌های واحد حفظ می‌شوند. نام ثبت‌شده در درخواست‌های قبلی تغییر نمی‌کند؛ تاریخچهٔ تغییر نام نیز نگهداری می‌شود.</p>
+  <div class="form-group full"><label for="unitRenameInput">نام جدید واحد</label><input id="unitRenameInput" type="text" maxlength="100" required value="${esc(r.name)}"></div>
+  </div><div class="modal-foot"><button type="button" class="btn-secondary" onclick="closeModal()">انصراف</button><button type="submit" class="btn-primary">ذخیرهٔ نام</button></div></form></div></div>`;
+}
+async function saveUnitRename(id, expectedVersion) {
+  await serverWrite(
+    "units/" + id + "/name",
+    "PUT",
+    {
+      version: expectedVersion,
+      name: document.getElementById("unitRenameInput").value.trim(),
+    },
+    true,
+  );
 }
 function renderUnitsPanel() {
   const el = document.getElementById("unitsPanel");
@@ -2685,9 +2750,18 @@ function renderUnitsPanel() {
     el.replaceChildren();
     return;
   }
-  el.innerHTML = `<div class="section-heading"><div><span class="eyebrow">فهرست مشترک</span><h2>واحدهای درخواست‌کننده</h2><p>واحد جدید مستقل از درخواست‌ها ذخیره می‌شود.</p></div></div>
-  <div class="management-card"><form class="inline-form" onsubmit="event.preventDefault();addUnit()"><label for="newUnitName">نام واحد جدید</label><input id="newUnitName" type="text" maxlength="100" required><button class="btn-primary" type="submit">افزودن واحد</button></form>
-  <div class="unit-grid">${requesterUnits.map((u, i) => `<div class="unit-row"><span>${esc(u)}</span><button class="quiet-button" onclick="removeUnit(${i})">حذف</button></div>`).join("")}</div></div>`;
+  el.innerHTML = `<div class="section-heading"><div><span class="eyebrow">ساختار سازمانی</span><h2>واحدهای درخواست‌کننده</h2><p>واحدها می‌توانند مستقل یا زیرمجموعهٔ واحد دیگر باشند. دسترسی‌های محدوده‌دار هنوز فعال نشده‌اند.</p></div></div>
+  <div class="management-card"><form class="unit-create-form" onsubmit="event.preventDefault();addUnit()">
+  <div class="form-group"><label for="newUnitName">نام واحد جدید</label><input id="newUnitName" type="text" maxlength="100" required></div>
+  <div class="form-group"><label for="newUnitParent">واحد بالادست</label><select id="newUnitParent">${unitParentOptions()}</select></div>
+  <button class="btn-primary" type="submit">افزودن واحد</button></form>
+  <ul class="unit-tree-list">${serverUnitRecords
+    .map((r) => {
+      const parent = serverUnitRecords.find((x) => x.id === r.parentId);
+      const hasChildren = serverUnitRecords.some((x) => x.parentId === r.id);
+      return `<li class="unit-row unit-tree-row" style="--unit-depth:${Math.min(r.depth, 10)}"><div class="unit-tree-info"><strong>${esc(r.name)}</strong><small>${parent ? "بالادست: " + esc(parent.name) : "سطح اول"}</small></div><div class="unit-tree-actions"><button class="quiet-button" onclick="openUnitRenameForm(${r.id})">تغییر نام</button><button class="quiet-button" onclick="openUnitParentForm(${r.id})">تغییر والد</button><button class="quiet-button" ${hasChildren ? 'disabled title="واحد دارای زیرواحد فعال است"' : ""} onclick="removeUnit(${requesterUnits.indexOf(r.name)})">حذف</button></div></li>`;
+    })
+    .join("")}</ul></div>`;
 }
 
 // ─── مدیریت حساب‌ها فقط برای مدیر سیستم ───
@@ -3545,6 +3619,7 @@ function lockServerView() {
   history = [];
   centers = [];
   requesterUnits = [];
+  serverUnitRecords = [];
   appUsers = [];
   render();
   document.getElementById("loginPassword").value = "";
@@ -3557,6 +3632,21 @@ async function refreshServerState() {
   if (!Array.isArray(d.vehicleTypes)) {
     throw new Error(
       "بک‌اند و رابط هم‌نسخه نیستند؛ اطلاعات انواع خودرو دریافت نشد.",
+    );
+  }
+  if (
+    !Array.isArray(d.unitRecords) ||
+    d.unitRecords.some(
+      (r) =>
+        !Number.isSafeInteger(r.id) ||
+        !Number.isSafeInteger(r.version) ||
+        !Array.isArray(r.ancestorIds) ||
+        !Number.isInteger(r.depth) ||
+        typeof r.path !== "string",
+    )
+  ) {
+    throw new Error(
+      "بک‌اند و رابط واحدهای درختی هم‌نسخه نیستند؛ فایل‌ها را بررسی کنید.",
     );
   }
   serverVehicleTypes = d.vehicleTypes;

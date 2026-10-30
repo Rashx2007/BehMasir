@@ -1,3 +1,11 @@
+import {
+  listUnitRows,
+  unitTree,
+  createUnit,
+  changeUnitParent,
+  renameUnit,
+  deleteUnit,
+} from "./unit-tree.mjs";
 import { endUserSessions } from "./auth-events.mjs";
 import { restoreVehicle, applyEmergency } from "./fleet-recovery.mjs";
 import { setHistoryActor } from "./history-context.mjs";
@@ -132,10 +140,8 @@ export async function snapshot(u) {
       c,
       "SELECT id,name,lat,lng,version FROM centers WHERE deleted_at IS NULL ORDER BY id",
     );
-    const units = await rows(
-      c,
-      "SELECT id,name,parent_id,used_ever FROM units WHERE deleted_at IS NULL ORDER BY id",
-    );
+    const units = await listUnitRows(c);
+    const unitRecords = unitTree(units);
     const samples = await rows(
       c,
       `SELECT r.* FROM transport_requests r WHERE ${vis} AND r.status IN ('scheduled','enroute') ORDER BY r.id LIMIT 5001`,
@@ -194,12 +200,8 @@ export async function snapshot(u) {
         lat: x.lat === null ? null : Number(x.lat),
         lng: x.lng === null ? null : Number(x.lng),
       })),
-      units: units.map((x) => x.name),
-      unitRecords: units.map((x) => ({
-        id: x.id,
-        name: x.name,
-        parentId: x.parent_id,
-      })),
+      units: unitRecords.map((x) => x.name),
+      unitRecords,
       usedUnits: units.filter((x) => x.used_ever).map((x) => x.name),
       dashboard,
       samples: [...sampleMap.values()].map(requestDTO),
@@ -472,29 +474,25 @@ export async function mutate(u, method, path, b, key, clientIp = null) {
       return response;
     }
     if (kind === "units") {
-      manage(u);
-      if (method === "POST" && !id) {
-        const r = await rows(db, "INSERT INTO units(name) VALUES (?)", [
-          text(b.name),
-        ]);
-        response.id = r.insertId;
-      } else if (method === "DELETE" && id) {
-        const r = await resource(db, "units", id);
-        if (!r || r.deleted_at) fail(404, "واحد پیدا نشد.");
-        if (
-          r.used_ever ||
-          (
-            await rows(db, "SELECT id FROM users WHERE unit_id=? LIMIT 1", [
-              r.id,
-            ])
-          ).length
-        )
-          fail(409, "واحد دارای سابقه یا کاربر است.");
-        await rows(
-          db,
-          "UPDATE units SET deleted_at=UTC_TIMESTAMP(3) WHERE id=?",
-          [r.id],
-        );
+      manage(u); // Existing policy only; scoped RBAC is a later, separate phase.
+      if (method === "POST" && !id && !action) {
+        response = await createUnit(db, b);
+      } else if (
+        method === "PUT" &&
+        id &&
+        action === "parent" &&
+        parts.length === 3
+      ) {
+        response = await changeUnitParent(db, id, b);
+      } else if (
+        method === "PUT" &&
+        id &&
+        action === "name" &&
+        parts.length === 3
+      ) {
+        response = await renameUnit(db, id, b);
+      } else if (method === "DELETE" && id && !action && parts.length === 2) {
+        response = await deleteUnit(db, id, b);
       } else fail(404, "عملیات نامعتبر است.");
     } else if (kind === "centers") {
       manage(u);
@@ -806,7 +804,7 @@ async function dashboardData(db) {
   );
   const topUnits = await rows(
     db,
-    `SELECT r.unit_name label,COUNT(*) value FROM transport_requests r WHERE ${predicate} GROUP BY r.unit_name ORDER BY value DESC,label LIMIT 5`,
+    `SELECT un.name label,r.unit_id unitId,COUNT(*) value FROM transport_requests r JOIN units un ON un.id=r.unit_id WHERE ${predicate} GROUP BY r.unit_id,un.name ORDER BY value DESC,label,r.unit_id LIMIT 5`,
     args,
   );
   const topCenters = await rows(
