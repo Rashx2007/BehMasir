@@ -22,7 +22,7 @@ test("unit manager history guide describes delivered records in authorized units
   const history = vm.runInContext("sectionGuideInfo('history')", context);
   assert.equal(history[0], "سوابق سفرهای محدوده");
   for (const text of [
-    "تحویل‌شده",
+    "انجام‌شده",
     "واحدهای مجاز",
     "نه صرفاً",
     "زیرواحدها",

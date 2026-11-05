@@ -32,10 +32,10 @@ test("plate normalization and bounded input", () => {
   assert.throws(() => preferences({ theme: "unexpected" }));
 });
 test("salted password hashes and password length", async () => {
-  const a = await passwordHash("A long unique password 1");
-  const b = await passwordHash("A long unique password 1");
+  const a = await passwordHash("A long unique password 1!");
+  const b = await passwordHash("A long unique password 1!");
   assert.notEqual(a, b);
-  assert(await verifyPassword("A long unique password 1", a));
+  assert(await verifyPassword("A long unique password 1!", a));
   assert(!(await verifyPassword("incorrect", a)));
   await assert.rejects(() => passwordHash("short"));
 });

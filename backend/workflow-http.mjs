@@ -82,10 +82,15 @@ export async function saveWorkflowSettings(db,s,b){
  await setHistoryActor(db,user.id);await q(db,'UPDATE workflow_settings SET enabled=?,org_enabled=?,contractor_enabled=? WHERE id=1',[+next.enabled,+next.org,+next.contractor]);
  await summary(db,user,'workflow.settings_changed','workflow_settings',1,{reason,before:settingsDTO(settings),after:next});return {ok:true};
 }
+export function grantDescription(value) {
+ if(value===undefined||value===null)return '';
+ if(typeof value!=='string'||[...value.trim()].length>500)fail(422,'توضیحات حداکثر ۵۰۰ نویسه باشد.');
+ return value.trim();
+}
 export async function saveWorkflowGrant(db,s,b,grantId=null){
  const {ctx,user,tree}=await context(db,s),system=user.role_code==='admin';if(!grantConfig(ctx,user))fail(403,'مجوز مدیریت تأییدکنندگان لازم است.');
- const target=integer(b.userId),unit=integer(b.unitId),cap=text(b.capability,40),include=bool(b.includeDescendants),active=bool(b.active),reason=text(b.reason,500);
- if([...reason].length<5||!WORKFLOW_CAPABILITIES.includes(cap)||!['ordinary','superior','independent_peer'].includes(b.relationship))fail(422,'مجوز، رابطه یا دلیل معتبر نیست.');
+ const target=integer(b.userId),unit=integer(b.unitId),cap=text(b.capability,40),include=bool(b.includeDescendants),active=bool(b.active),reason=grantDescription(b.reason);
+ if(!WORKFLOW_CAPABILITIES.includes(cap)||!['ordinary','superior','independent_peer'].includes(b.relationship))fail(422,'مجوز یا رابطه معتبر نیست.');
  if(!tree.some(t=>t.id===unit))fail(422,'واحد فعال انتخاب کنید.');
  if(!system){
   if(cap!=='workflow.unit_approve'||!has(ctx,'workflow.configure_approvers',unit))fail(403,'فقط تعیین تأییدکنندهٔ واحد در محدوده مجاز است.');

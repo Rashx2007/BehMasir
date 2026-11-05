@@ -770,7 +770,7 @@ function recentBox(days, total) {
     .join("");
   return `<div class="dash-box">
     ${dashBoxHead("درخواست‌های موفق", `انجام‌شده در ${faNum(RECENT_DAYS)} روز گذشته`, DASH_ICONS.check)}
-    <div class="recent-total"><b>${faNum(total)}</b> درخواست تحویل‌شده</div>
+    <div class="recent-total"><b>${faNum(total)}</b> درخواست انجام‌شده</div>
     <div class="recent-days">${bars}</div>
   </div>`;
 }
@@ -864,7 +864,7 @@ function renderRequests() {
                   ? "active"
                   : getSampleStatus(s.date, s.time);
             const stInfo = {
-              delivered: ["تحویل شده", "badge-green"],
+              delivered: ["انجام‌شده", "badge-green"],
               active: ["در حال حمل", "badge-blue"],
               pending: ["در انتظار", "badge-amber"],
               overdue: ["تاخیر", "badge-red"],
@@ -881,7 +881,7 @@ function renderRequests() {
           <td><span class="badge ${stInfo[1]}">${stInfo[0]}</span></td>
           <td><span class="req-car"><span class="legend-dot" style="background:${color}"></span>${car ? esc(car.name) : esc(s.carName || "—")}</span></td>
                     <td><span class="req-actions">
-            ${canDeliverSample(s) && s.status !== "delivered" ? `<button class="icon-btn success" title="ثبت تحویل" onclick="deliverSample(${s.id})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg></button>` : ""}
+            ${canDeliverSample(s) && s.status !== "delivered" ? `<button class="icon-btn success" title="پایان مأموریت" onclick="deliverSample(${s.id})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg></button>` : ""}
             ${currentUser?.role === "unit_manager" && canAccess("requests.read") ? `<button class="quiet-button" onclick="showUnitRequestDetails(${s.id})">جزئیات</button>` : ""}
             ${canDeleteSample(s) ? `<button class="icon-btn danger" title="حذف" onclick="deleteSample(${s.id})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>` : ""}
           </span></td>
@@ -908,7 +908,7 @@ function renderHistory() {
       <td class="req-route">${esc(h.origin)} ← ${esc(h.destination)}${h.unit ? `<div class="req-unit">${esc(h.unit)}</div>` : ""}</td>
       <td><span class="time-chip">${h.time}</span></td>
       <td>${esc(h.carName)}</td>
-      <td><span class="badge badge-green">تحویل شده</span></td>
+      <td><span class="badge badge-green">انجام‌شده</span></td>
     </tr>`,
           )
           .join("");
@@ -2572,7 +2572,7 @@ function applyRoleVisibility() {
     !canAccess("requests.create") || (typeof serverWorkflowEnabled !== "undefined" && serverWorkflowEnabled);
   document
     .querySelector("#tab-requests .req-layout")
-    .classList.toggle("read-only", currentUser?.role === "unit_manager");
+    .classList.toggle("read-only", currentUser?.role === "unit_manager" || document.querySelector("#tab-requests .form-card").hidden);
   document.querySelector("#tab-requests .req-list-head > span").textContent =
     currentUser?.role === "unit_manager"
       ? "درخواست‌های باز محدوده"
@@ -2821,7 +2821,7 @@ function renderUnitOverview() {
   const labels = {
     scheduled: "زمان‌بندی‌شده",
     enroute: "در حال اجرا",
-    delivered: "تحویل‌شده",
+    delivered: "انجام‌شده",
     cancelled: "لغوشده",
   };
   el.innerHTML =
@@ -2888,7 +2888,7 @@ function openUserForm(id) {
         `<option value="${value}" ${u.role === value ? "selected" : ""}>${label}</option>`,
     )
     .join("")}</select></div>
-  <div class="form-group"><label for="uf_password">${id ? "رمز جدید؛ خالی یعنی بدون تغییر" : "رمز عبور؛ حداقل ۱۲ نویسه"}</label><input id="uf_password" type="password" autocomplete="new-password" minlength="12" ${id ? "" : "required"}></div>
+  <div class="form-group"><label for="uf_password">${id ? "رمز جدید؛ خالی یعنی بدون تغییر" : "رمز عبور؛ حداقل ۸ نویسه، شامل حرف بزرگ و کوچک انگلیسی، رقم و علامت خاص"}</label><input id="uf_password" type="password" oninput="this.setCustomValidity('')" autocomplete="new-password" minlength="8" maxlength="128" ${id ? "" : "required"}></div>
   <div class="form-group full" id="uf_unitWrap"><label for="uf_unit">واحد درخواست‌کننده</label><select id="uf_unit">${requesterUnits.map((unit) => `<option value="${esc(unit)}" ${u.unit === unit ? "selected" : ""}>${esc(unit)}</option>`).join("")}</select></div>
   <fieldset class="form-group full" id="uf_vehicleWrap"><legend>خودروهای تخصیص‌یافته به راننده</legend><div class="assignment-grid">${vehicles.map((v) => `<label><input type="checkbox" name="uf_vehicle" value="${v.id}" ${u.vehicleIds?.includes(v.id) ? "checked" : ""}>${esc(v.name)}</label>`).join("")}</div></fieldset>
   <label class="checkbox-row full"><input id="uf_active" type="checkbox" ${u.active ? "checked" : ""}>حساب فعال باشد</label>
@@ -2900,7 +2900,17 @@ function toggleUserFields() {
   document.getElementById("uf_unitWrap").hidden = !["requester", "unit_manager"].includes(role);
   document.getElementById("uf_vehicleWrap").hidden = role !== "driver";
 }
+function validatePasswordField(id, optional = false) {
+  const field = document.getElementById(id), value = field.value;
+  const valid = (optional && value === "") ||
+    (value.length >= 8 && value.length <= 128 && !/[\x00-\x1F\x7F]/.test(value) &&
+     /[A-Z]/.test(value) && /[a-z]/.test(value) && /[0-9]/.test(value) &&
+     /[\x21-\x2F\x3A-\x40\x5B-\x60\x7B-\x7E]/.test(value));
+  field.setCustomValidity(valid ? "" : "رمز باید ۸ تا ۱۲۸ نویسه و شامل حرف بزرگ و کوچک انگلیسی، رقم و علامت خاص باشد.");
+  return field.reportValidity();
+}
 async function saveUserForm(id) {
+  if (!validatePasswordField("uf_password", Boolean(id))) return;
   const role = document.getElementById("uf_role").value;
   const b = {
     name: document.getElementById("uf_name").value.trim(),
@@ -2958,7 +2968,7 @@ const SECTION_GUIDES = {
   ],
   missions: [
     "پنل راننده",
-    "درخواست‌های جاری، آینده و انجام‌شده را می‌توانید به صورت جداگانه مشاهده کنید. ابتدا «شروع مأموریت» و سپس «ثبت تحویل» را بزنید.",
+    "درخواست‌های جاری، آینده و انجام‌شده را می‌توانید به صورت جداگانه مشاهده کنید. ابتدا «شروع مأموریت» و سپس «پایان مأموریت» را بزنید.",
   ],
 };
 
@@ -2974,7 +2984,7 @@ function sectionGuideInfo(tab) {
   if (currentUser?.role === "unit_manager" && tab === "history")
     return [
       "سوابق سفرهای محدوده",
-      "در این بخش سوابق درخواست‌های تحویل‌شدهٔ واحدهای مجاز خود را می‌بینید؛ نه صرفاً درخواست‌های ثبت‌شده توسط خودتان.\nسوابق زیرواحدها فقط در صورت قرارگرفتن در محدودهٔ مجاز قابل مشاهده است.\nدر این بخش فقط می‌توانید سوابق را ببینید؛ امکان تغییر یا حذف آن‌ها وجود ندارد.",
+      "در این بخش سوابق درخواست‌های انجام‌شدهٔ واحدهای مجاز خود را می‌بینید؛ نه صرفاً درخواست‌های ثبت‌شده توسط خودتان.\nسوابق زیرواحدها فقط در صورت قرارگرفتن در محدودهٔ مجاز قابل مشاهده است.\nدر این بخش فقط می‌توانید سوابق را ببینید؛ امکان تغییر یا حذف آن‌ها وجود ندارد.",
     ];
   return SECTION_GUIDES[tab];
 }
@@ -3123,7 +3133,7 @@ function openPreferences() {
         `<button type="button" class="theme-choice" data-theme-choice="${value}" aria-pressed="${theme === value}" onclick="setTheme('${value}')"><span class="theme-preview theme-preview-${value}" aria-hidden="true"></span><strong>${label}</strong><span class="theme-selected" aria-hidden="true">✓</span></button>`,
     )
     .join("")}</div></section>
-  <section id="settingsPanel-password" class="settings-stack settings-panel" role="tabpanel" aria-labelledby="settingsTab-password" hidden><h3>تغییر رمز حساب</h3><form class="settings-stack" onsubmit="event.preventDefault();changeOwnPassword()"><label for="ownOldPassword">رمز فعلی</label><input type="password" id="ownOldPassword" autocomplete="current-password" required><label for="ownNewPassword">رمز جدید؛ حداقل ۱۲ نویسه</label><input type="password" id="ownNewPassword" autocomplete="new-password" minlength="12" required><button class="btn-primary" id="ownPasswordButton">ذخیرهٔ رمز</button></form></section>
+  <section id="settingsPanel-password" class="settings-stack settings-panel" role="tabpanel" aria-labelledby="settingsTab-password" hidden><h3>تغییر رمز حساب</h3><form class="settings-stack" onsubmit="event.preventDefault();changeOwnPassword()"><label for="ownOldPassword">رمز فعلی</label><input type="password" id="ownOldPassword" autocomplete="current-password" required><label for="ownNewPassword">رمز جدید؛ حداقل ۸ نویسه، شامل حرف بزرگ و کوچک انگلیسی، رقم و علامت خاص</label><input type="password" id="ownNewPassword" oninput="this.setCustomValidity('')" autocomplete="new-password" minlength="8" maxlength="128" required><button class="btn-primary" id="ownPasswordButton">ذخیرهٔ رمز</button></form></section>
   <section id="settingsPanel-guides" class="settings-stack settings-panel" role="tabpanel" aria-labelledby="settingsTab-guides" hidden><h3>نمایش راهنماها</h3><p class="settings-note">راهنمای هر بخش و راهنمای بستن پنجره را می‌توانید دوباره فعال کنید.</p><button type="button" class="btn-secondary" onclick="resetGuides()">بازنمایش همهٔ راهنماها</button><button type="button" class="btn-secondary" onclick="closeModal();showSectionGuide()">راهنمای بخش فعلی</button><button type="button" class="btn-secondary" onclick="restoreModalCloseHelp()">بازنمایش راهنمای بستن پنجره</button></section>
   </div></section></div>`;
 }
@@ -3141,6 +3151,7 @@ function selectSettingsTab(id, focus = false) {
 }
 
 async function changeOwnPassword() {
+  if (!validatePasswordField("ownNewPassword")) return;
   await serverWrite(
     "password",
     "POST",
@@ -3212,7 +3223,7 @@ function renderMissions() {
               !enroute &&
               getSampleStatus(s.date, s.time) === "overdue";
             const label = delivered
-              ? "تحویل‌شده"
+              ? "انجام‌شده"
               : reserved
                 ? "رزرو"
                 : enroute
@@ -3222,8 +3233,8 @@ function renderMissions() {
                     : "در انتظار حرکت";
             return `<article class="mission-card"><div class="mission-top"><span class="badge ${delivered ? "badge-green" : enroute ? "badge-blue" : delayed ? "badge-red" : "badge-amber"}">${label}</span><span class="mission-number">درخواست ${faNum(s.id)}</span></div>
     <div class="mission-route"><div><span>مبدأ</span><strong>${esc(s.origin)}</strong></div><div><span>مقصد</span><strong>${esc(s.destination)}</strong></div></div>
-    <div class="mission-details"><span>تاریخ <b>${esc(formatRouteDate(s.date))}</b></span><span>ساعت <b dir="ltr">${esc(s.time.replace(/\d/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[Number(d)]))}</b></span><span>خودرو <b>${esc(car?.name || "حذف‌شده")}</b></span><span>واحد <b>${esc(s.unit || "—")}</b></span></div>
-    ${!delivered && !reserved ? `<div class="mission-actions">${enroute ? `<button class="btn-primary" onclick="confirmMissionDelivery(${s.id})">ثبت تحویل</button>` : `<button class="btn-primary" onclick="startMission(${s.id})">شروع مأموریت</button>`}<button class="btn-secondary" onclick="showMissionDetails(${s.id})">جزئیات</button></div>` : `<button class="quiet-button" onclick="showMissionDetails(${s.id})">جزئیات درخواست</button>`}</article>`;
+    <div class="mission-details"><span>تاریخ <b>${esc(formatRouteDate(s.date))}</b></span><span>ساعت <b><bdi dir="ltr">${esc(s.time.replace(/\d/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[Number(d)]))}</bdi></b></span><span>خودرو <b>${esc(car?.name || "حذف‌شده")}</b></span><span>واحد <b>${esc(s.unit || "—")}</b></span></div>
+    ${!delivered && !reserved ? `<div class="mission-actions">${enroute ? `<button class="btn-primary" onclick="confirmMissionDelivery(${s.id})">پایان مأموریت</button>` : `<button class="btn-primary" onclick="startMission(${s.id})">شروع مأموریت</button>`}<button class="btn-secondary" onclick="showMissionDetails(${s.id})">جزئیات</button></div>` : `<button class="quiet-button" onclick="showMissionDetails(${s.id})">جزئیات درخواست</button>`}</article>`;
           })
           .join("")
       : `<div class="driver-empty"><h2>درخواستی در این بخش ندارید</h2><p>درخواست‌های روزهای بعد را در «درخواست‌های آینده» ببینید.</p></div>`
@@ -3235,21 +3246,20 @@ function showMissionDetails(id) {
     return;
   closeModal();
   document.getElementById("modalRoot").innerHTML =
-    `<div class="modal-overlay"><section class="modal-box"><div class="modal-head"><h2 class="modal-title">جزئیات درخواست ${faNum(id)}</h2><button class="modal-close" aria-label="بستن" onclick="closeModal()">×</button></div><div class="modal-body settings-stack"><p>مبدأ: <b>${esc(sample.origin)}</b></p><p>مقصد: <b>${esc(sample.destination)}</b></p><p>تاریخ: ${esc(formatRouteDate(sample.date))} · ساعت: ${esc(sample.time)}</p><p>واحد: <b>${esc(sample.unit)}</b></p><p>پلاک خودرو: <b dir="ltr" class="plate-value">${esc(vehicles.find((vehicle) => vehicle.id === sample.carId)?.plate || "—")}</b></p></div></section></div>`;
+    `<div class="modal-overlay"><section class="modal-box"><div class="modal-head"><h2 class="modal-title">جزئیات درخواست ${faNum(id)}</h2><button class="modal-close" aria-label="بستن" onclick="closeModal()">×</button></div><div class="modal-body settings-stack"><p>مبدأ: <b>${esc(sample.origin)}</b></p><p>مقصد: <b>${esc(sample.destination)}</b></p><p>تاریخ: ${esc(formatRouteDate(sample.date))} · ساعت: ${esc(String(sample.time).replace(/\d/g,d=>"۰۱۲۳۴۵۶۷۸۹"[Number(d)]))}</p><p>واحد: <b>${esc(sample.unit)}</b></p><p>پلاک خودرو: <b dir="ltr" class="plate-value">${esc(vehicles.find((vehicle) => vehicle.id === sample.carId)?.plate || "—")}</b></p></div></section></div>`;
 }
 function confirmMissionDelivery(id) {
   const sample = samples.find((s) => s.id === id);
   if (!sample || !canDeliverSample(sample)) {
-    showToast("error", "این مأموریت قابل تحویل نیست.");
+    showToast("error", "پایان این مأموریت قابل ثبت نیست.");
     return;
   }
   openLocalConfirm(
-    "تأیید تحویل",
-    `تحویل مأموریت «${sample.origin} ← ${sample.destination}» ثبت شود؟`,
+    "تأیید پایان مأموریت",
+    `پایان مأموریت «${sample.origin} ← ${sample.destination}» ثبت شود؟`,
     () => {
       deliverSample(id);
       closeModal();
-      showToast("success", "تحویل ثبت شد.");
     },
   );
 }
