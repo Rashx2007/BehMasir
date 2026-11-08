@@ -32,10 +32,22 @@ export function workflowActions(r,ctx,enabled){
  return result;
 }
 function dto(r,ctx,enabled){return {id:r.id,creatorId:r.creator_id,creator:r.creator_name,beneficiaryId:r.beneficiary_id,beneficiary:r.beneficiary_name,unitId:r.unit_id,unit:r.unit_name,originId:r.origin_id,destinationId:r.destination_id,origin:r.origin_name,destination:r.destination_name,date:r.service_date,time:r.service_time.slice(0,5),needs:r.needs,state:r.state,version:r.version,contentVersion:r.content_version,unitApproval:readJSON(r.unit_approval),fleetApproval:readJSON(r.fleet_approval),ownership:r.ownership,transportRequestId:r.transport_request_id,progress:r.operational_status||null,actions:workflowActions(r,ctx,enabled)}}
+// Read only the current decision for rows already filtered by workflowPredicate.
+// Match both version and state to avoid revealing a stale earlier return after resubmission.
+export async function workflowDecisionReasons(db,visibleRows){
+ const eligible=visibleRows.filter(r=>r.state==='returned'||r.state==='rejected');
+ if(!eligible.length)return new Map();
+ const ids=eligible.map(r=>String(r.id)), allowed=new Map(eligible.map(r=>[String(r.id),r]));
+ const found=await q(db,`SELECT a.entity_id, JSON_UNQUOTE(JSON_EXTRACT(a.payload,'$.reason')) reason, JSON_UNQUOTE(JSON_EXTRACT(a.payload,'$.to')) decision_state, CAST(JSON_UNQUOTE(JSON_EXTRACT(a.payload,'$.version')) AS UNSIGNED) decision_version FROM audit_log a JOIN workflow_requests w ON CAST(w.id AS CHAR CHARACTER SET ascii)=a.entity_id WHERE a.entity_type='workflow_requests' AND a.action='workflow.transition' AND a.entity_id IN (${placeholders(ids)}) AND w.state IN ('returned','rejected') AND JSON_UNQUOTE(JSON_EXTRACT(a.payload,'$.action')) IN ('return','reject') AND JSON_UNQUOTE(JSON_EXTRACT(a.payload,'$.to'))=w.state AND CAST(JSON_UNQUOTE(JSON_EXTRACT(a.payload,'$.version')) AS UNSIGNED)=w.version ORDER BY a.id DESC`,ids);
+ const result=new Map();
+ for(const row of found){const key=String(row.entity_id),r=allowed.get(key);if(r&&!result.has(key)&&row.decision_state===r.state&&Number(row.decision_version)===Number(r.version)&&typeof row.reason==='string'&&row.reason.length>0&&row.reason.length<=1000)result.set(key,row.reason)}
+ return result;
+}
 export async function workflowView(db,s,beforeValue){
  const {ctx,user,tree,settings}=await context(db,s),flags=settingsDTO(settings),canGrants=grantConfig(ctx,user),canSections=sectionConfig(ctx,user);
  const [predicate,args]=workflowPredicate(ctx),before=beforeValue?integer(beforeValue):4294967295;
  const list=await q(db,`SELECT w.*,cu.name creator_name,bu.name beneficiary_name,bu.role_code beneficiary_role,un.name unit_name,o.name origin_name,d.name destination_name,tr.status operational_status FROM workflow_requests w JOIN users cu ON cu.id=w.creator_id JOIN users bu ON bu.id=w.beneficiary_id JOIN units un ON un.id=w.unit_id JOIN centers o ON o.id=w.origin_id JOIN centers d ON d.id=w.destination_id LEFT JOIN transport_requests tr ON tr.id=w.transport_request_id WHERE ${predicate} AND w.id<? ORDER BY w.id DESC LIMIT 101`,[...args,before]);
+ const visibleRows=list.slice(0,100),decisionReasons=await workflowDecisionReasons(db,visibleRows);
  const configUnits=user.role_code==='admin'?tree.map(t=>t.id):capUnits(ctx,'workflow.configure_approvers');
  const createUnits=capUnits(ctx,'workflow.create'),delegateUnits=capUnits(ctx,'workflow.create_for_others');
  const visibleUnits=uniq([...createUnits,...configUnits,...ctx.grants.flatMap(g=>g.unitIds)]);
@@ -60,7 +72,7 @@ export async function workflowView(db,s,beforeValue){
  if(vehicles.length>2000)fail(413,'فهرست خودروها به فیلتر نیاز دارد.');
  const drivers=vehicles.length?await q(db,`SELECT u.id,u.name,uv.vehicle_id vehicleId FROM user_vehicles uv JOIN users u ON u.id=uv.user_id WHERE u.active=1 AND u.role_code='driver' AND uv.vehicle_id IN (${placeholders(vehicles.map(v=>v.id))}) ORDER BY uv.vehicle_id,u.id LIMIT 10001`,vehicles.map(v=>v.id)):[];
  if(drivers.length>10000)fail(413,'فهرست رانندگان به فیلتر نیاز دارد.');
- return {version:1,currentUserId:user.id,settings:flags,permissions:ctx.grants,createUnits,delegateUnits,configUnits,canGrants,canSections,isSystemAdmin:user.role_code==='admin',units:tree.filter(t=>visibleUnits.includes(t.id)).map(t=>({id:t.id,name:t.name,path:t.path,parentId:t.parentId})),users,centers,vehicles,drivers,grants,capabilities:WORKFLOW_CAPABILITIES,items:list.slice(0,100).map(r=>dto(r,ctx,flags.enabled)),cursor:list.length>100?list[99].id:null};
+ return {version:1,currentUserId:user.id,settings:flags,permissions:ctx.grants,createUnits,delegateUnits,configUnits,canGrants,canSections,isSystemAdmin:user.role_code==='admin',units:tree.filter(t=>visibleUnits.includes(t.id)).map(t=>({id:t.id,name:t.name,path:t.path,parentId:t.parentId})),users,centers,vehicles,drivers,grants,capabilities:WORKFLOW_CAPABILITIES,items:visibleRows.map(r=>({...dto(r,ctx,flags.enabled),decisionReason:decisionReasons.get(String(r.id))||null})),cursor:list.length>100?list[99].id:null};
 }
 async function summary(db,u,action,entity,id,payload){await q(db,'INSERT INTO audit_log(actor_id,action,entity_type,entity_id,payload) VALUES (?,?,?,?,?)',[u.id,action,entity,String(id),JSON.stringify(payload)])}
 export async function saveWorkflowSettings(db,s,b){
