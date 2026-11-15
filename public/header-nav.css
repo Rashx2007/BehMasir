@@ -1,0 +1,48 @@
+/* 07F: header layout only. No clipping, horizontal scrolling, or role overrides. */
+body > header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "brand actions" "nav nav";
+  gap: 8px 20px;
+  padding: 12px 24px 0;
+}
+body > header .header-brand { grid-area: brand; min-width: 0; white-space: normal; }
+body > header .brand-text { min-width: 0; }
+body > header .brand-title, body > header .brand-sub { overflow-wrap: anywhere; }
+body > header .brand-logo { flex-shrink: 0; }
+body > header .header-actions { grid-area: actions; min-width: 0; flex-wrap: wrap; margin-inline-start: 0; }
+body > header .header-nav {
+  grid-area: nav;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  order: initial;
+  overflow: visible;
+  align-self: stretch;
+  justify-self: stretch;
+  justify-content: flex-start;
+}
+body > header .header-nav .tab-btn {
+  flex: 0 1 auto;
+  min-width: 0;
+  min-height: 48px;
+  padding: 10px 14px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  justify-content: center;
+}
+body > header .header-nav .tab-btn svg { flex-shrink: 0; }
+body > header .header-nav .tab-btn[hidden] { display: none; }
+@media (max-width: 760px) {
+  body > header {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "brand" "actions" "nav";
+    padding: 12px 16px 0;
+    gap: 10px;
+  }
+  body > header .header-actions { width: 100%; justify-content: flex-start; }
+  body > header .header-actions .user-chip { flex: 1 1 110px; max-width: 100%; }
+  body > header .header-nav .tab-btn { flex: 1 1 125px; padding: 10px 8px; }
+}

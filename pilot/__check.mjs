@@ -1,0 +1,11 @@
+import {readFileSync} from 'node:fs';
+import {dirname, resolve} from 'node:path';
+import {fileURLToPath} from 'node:url';
+const root=dirname(fileURLToPath(import.meta.url));
+const plan=JSON.parse(readFileSync(resolve(root,'clean-plan.json'),'utf8'));
+const a=plan.statements.filter(s=>s.startsWith('ALTER TABLE'));
+console.log('alters in plan:',a.length);
+a.forEach(s=>console.log(s.slice(0,80)));
+const t=plan.statements.filter(s=>s.startsWith('CREATE TRIGGER'));
+console.log('triggers in plan:',t.length);
+console.log('statements total:',plan.statements.length);

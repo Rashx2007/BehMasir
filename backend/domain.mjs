@@ -1,3 +1,21 @@
+import { assertLegacyWorkflowGate, assertWorkflowUnitDeletion, assertWorkflowLegacyReassignment } from './workflow-http.mjs';
+import { scopedState, scopedHistory, scopedReports } from "./scoped-read.mjs";
+import {
+  assertScopedRoute,
+  freshReadUser,
+  readSnapshot,
+} from "./scoped-routes.mjs";
+import {
+  listUnitRows,
+  unitTree,
+  createUnit,
+  changeUnitParent,
+  renameUnit,
+  deleteUnit,
+} from "./unit-tree.mjs";
+import { endUserSessions } from "./auth-events.mjs";
+import { restoreVehicle, applyEmergency } from "./fleet-recovery.mjs";
+import { setHistoryActor } from "./history-context.mjs";
 import { rows, transaction, audit, json, pool } from "./db.mjs";
 import {
   fail,
@@ -14,6 +32,7 @@ import {
   preferences,
   hash,
 } from "./core.mjs";
+import { listVehicleTypes, resolveVehicleType } from "./vehicle-types.mjs";
 export const manager = (u) => ["admin", "dispatcher"].includes(u.role_code);
 const manage = (u) => {
   if (!manager(u)) fail(403, "اجازهٔ مدیریت این بخش را ندارید.");
@@ -27,6 +46,9 @@ const version = (row, b) => {
     fail(409, "اطلاعات تغییر کرده است؛ صفحه را تازه و دوباره بررسی کنید.");
 };
 export async function publicUser(db, u) {
+  const [roleTitle] = await rows(db, "SELECT title FROM roles WHERE code=?", [
+    u.role_code,
+  ]);
   const vs = await rows(
     db,
     "SELECT vehicle_id FROM user_vehicles WHERE user_id=?",
@@ -44,6 +66,7 @@ export async function publicUser(db, u) {
     name: u.name,
     username: u.username,
     role: u.role_code,
+    roleTitle: roleTitle?.title || u.role_code,
     active: !!u.active,
     unit: u.unit_name || null,
     vehicleIds: vs.map((x) => x.vehicle_id),
@@ -58,6 +81,7 @@ export function vehicleDTO(v) {
     name: v.name,
     plate: v.plate,
     bodyType: v.body_type,
+    vehicleTypeId: v.vehicle_type_id,
     serviceType: v.service_type,
     passengerCapacity: v.passenger_capacity,
     cargoCapacity: v.cargo_capacity,
@@ -100,16 +124,19 @@ export function visibility(u, alias = "r") {
   if (manager(u)) return ["1=1", []];
   if (u.role_code === "requester")
     return [`${alias}.requester_user_id=?`, [u.id]];
+  if (u.role_code !== "driver")
+    fail(403, "نقش حساب برای این مسیر پشتیبانی نمی‌شود.");
   return [
     `EXISTS(SELECT 1 FROM request_drivers rd WHERE rd.request_id=${alias}.id AND rd.user_id=?)`,
     [u.id],
   ];
 }
 export async function snapshot(u) {
-  const c = await pool.getConnection();
-  try {
-    await c.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
-    await c.beginTransaction();
+  return readSnapshot(pool, async (c) => {
+    u = await freshReadUser(c, u);
+    if (u.role_code === "unit_manager") {
+      return scopedState(c, u, requestDTO);
+    }
     const [vis, args] = visibility(u);
     const vehicles =
       u.role_code === "driver"
@@ -122,14 +149,13 @@ export async function snapshot(u) {
             c,
             "SELECT * FROM vehicles WHERE deleted_at IS NULL ORDER BY id",
           );
+    const vehicleTypes = await listVehicleTypes(c);
     const centers = await rows(
       c,
       "SELECT id,name,lat,lng,version FROM centers WHERE deleted_at IS NULL ORDER BY id",
     );
-    const units = await rows(
-      c,
-      "SELECT id,name,used_ever FROM units WHERE deleted_at IS NULL ORDER BY id",
-    );
+    const units = await listUnitRows(c);
+    const unitRecords = unitTree(units);
     const samples = await rows(
       c,
       `SELECT r.* FROM transport_requests r WHERE ${vis} AND r.status IN ('scheduled','enroute') ORDER BY r.id LIMIT 5001`,
@@ -178,17 +204,17 @@ export async function snapshot(u) {
     const revision = (
       await rows(c, "SELECT revision FROM app_meta WHERE id=1")
     )[0].revision;
-    await c.commit();
     return {
       revision,
       vehicles: vehicles.map(vehicleDTO),
+      vehicleTypes,
       centers: centers.map((x) => ({
         ...x,
         lat: x.lat === null ? null : Number(x.lat),
         lng: x.lng === null ? null : Number(x.lng),
       })),
-      units: units.map((x) => x.name),
-      unitRecords: units.map((x) => ({ id: x.id, name: x.name })),
+      units: unitRecords.map((x) => x.name),
+      unitRecords,
       usedUnits: units.filter((x) => x.used_ever).map((x) => x.name),
       dashboard,
       samples: [...sampleMap.values()].map(requestDTO),
@@ -198,25 +224,33 @@ export async function snapshot(u) {
       currentUser: users.find((x) => x.id === u.id),
       capacityUsage: usage.map((x) => ({ ...x, used: Number(x.used) })),
     };
-  } catch (e) {
-    await c.rollback();
-    throw e;
-  } finally {
-    c.release();
-  }
+  });
 }
-export async function historyPage(u, before) {
-  const [vis, args] = visibility(u);
-  const id = integer(before);
-  const list = await rows(
-    pool,
-    `SELECT r.* FROM transport_requests r WHERE ${vis} AND r.status='delivered' AND r.id<? ORDER BY r.id DESC LIMIT 201`,
-    [...args, id],
-  );
-  return {
-    items: list.slice(0, 200).map(requestDTO),
-    cursor: list.length > 200 ? list[199].id : null,
-  };
+export async function historyPage(session, before) {
+  return readSnapshot(pool, async (db) => {
+    const u = await freshReadUser(db, session);
+    if (u.role_code === "unit_manager")
+      return scopedHistory(db, u, before, requestDTO);
+    const [vis, args] = visibility(u),
+      id = integer(before);
+    const list = await rows(
+      db,
+      `SELECT r.* FROM transport_requests r WHERE ${vis} AND r.status='delivered' AND r.id<? ORDER BY r.id DESC LIMIT 201`,
+      [...args, id],
+    );
+    return {
+      items: list.slice(0, 200).map(requestDTO),
+      cursor: list.length > 200 ? list[199].id : null,
+    };
+  });
+}
+export async function unitReports(session) {
+  return readSnapshot(pool, async (db) => {
+    const u = await freshReadUser(db, session);
+    if (u.role_code !== "unit_manager")
+      fail(403, "این مسیر مخصوص مشاهدهٔ واحدی است.");
+    return scopedReports(db, u);
+  });
 }
 async function available(db, vehicleId, date, time, except = 0) {
   const v = (
@@ -276,7 +310,7 @@ async function requestAllowed(db, u, r) {
     ).length > 0
   );
 }
-export async function mutate(u, method, path, b, key) {
+export async function mutate(u, method, path, b, key, clientIp = null) {
   return transaction(async (db) => {
     // مجوز در همان تراکنش دوباره بررسی می‌شود؛ نقش ارسال‌شده از مرورگر قابل اعتماد نیست.
     const fresh = (
@@ -289,12 +323,15 @@ export async function mutate(u, method, path, b, key) {
     if (!fresh?.active || fresh.auth_version !== u.auth_version)
       fail(401, "نشست معتبر نیست.");
     u = fresh;
+    assertScopedRoute(u, method, path);
+    await setHistoryActor(db, u.id);
     let response = { ok: true };
     const parts = path.split("/").filter(Boolean),
       kind = parts[0],
       id = parts[1],
       action = parts[2];
     if (method === "POST" && kind === "requests" && !id) {
+      await assertLegacyWorkflowGate(db);
       if (!["admin", "dispatcher", "requester"].includes(u.role_code))
         fail(403, "امکان ثبت درخواست ندارید.");
       if (typeof key !== "string" || !/^[0-9a-f-]{36}$/.test(key))
@@ -427,6 +464,7 @@ export async function mutate(u, method, path, b, key) {
         );
         await event(db, u, r.id, "delivered");
       } else if (method === "POST" && action === "reassign") {
+        await assertWorkflowLegacyReassignment(db, r.id);
         manage(u);
         if (!["scheduled", "enroute"].includes(r.status))
           fail(409, "درخواست باز نیست.");
@@ -460,29 +498,26 @@ export async function mutate(u, method, path, b, key) {
       return response;
     }
     if (kind === "units") {
-      manage(u);
-      if (method === "POST" && !id) {
-        const r = await rows(db, "INSERT INTO units(name) VALUES (?)", [
-          text(b.name),
-        ]);
-        response.id = r.insertId;
-      } else if (method === "DELETE" && id) {
-        const r = await resource(db, "units", id);
-        if (!r || r.deleted_at) fail(404, "واحد پیدا نشد.");
-        if (
-          r.used_ever ||
-          (
-            await rows(db, "SELECT id FROM users WHERE unit_id=? LIMIT 1", [
-              r.id,
-            ])
-          ).length
-        )
-          fail(409, "واحد دارای سابقه یا کاربر است.");
-        await rows(
-          db,
-          "UPDATE units SET deleted_at=UTC_TIMESTAMP(3) WHERE id=?",
-          [r.id],
-        );
+      manage(u); // Existing policy only; scoped RBAC is a later, separate phase.
+      if (method === "POST" && !id && !action) {
+        response = await createUnit(db, b);
+      } else if (
+        method === "PUT" &&
+        id &&
+        action === "parent" &&
+        parts.length === 3
+      ) {
+        response = await changeUnitParent(db, id, b);
+      } else if (
+        method === "PUT" &&
+        id &&
+        action === "name" &&
+        parts.length === 3
+      ) {
+        response = await renameUnit(db, id, b);
+      } else if (method === "DELETE" && id && !action && parts.length === 2) {
+        await assertWorkflowUnitDeletion(db, id);
+        response = await deleteUnit(db, id, b);
       } else fail(404, "عملیات نامعتبر است.");
     } else if (kind === "centers") {
       manage(u);
@@ -537,50 +572,14 @@ export async function mutate(u, method, path, b, key) {
       } else fail(404, "عملیات نامعتبر است.");
     } else if (kind === "vehicles") {
       manage(u);
-      if (action === "emergency" && method === "POST") {
-        const v = await resource(db, "vehicles", id);
-        version(v, b);
-        const open = await rows(
-          db,
-          "SELECT * FROM transport_requests WHERE vehicle_id=? AND status IN ('scheduled','enroute') ORDER BY id",
-          [v.id],
-        );
-        let moved = 0;
-        for (const r of open) {
-          const cars = await rows(
-            db,
-            "SELECT v.id,COUNT(r.id) n FROM vehicles v LEFT JOIN transport_requests r ON r.vehicle_id=v.id AND r.service_date=? AND r.status<>'cancelled' WHERE v.id<>? AND v.deleted_at IS NULL AND v.status='ok' GROUP BY v.id ORDER BY n/v.cargo_capacity,v.id",
-            [r.service_date, v.id],
-          );
-          for (const c of cars) {
-            let target;
-            try {
-              target = await available(
-                db,
-                c.id,
-                r.service_date,
-                r.service_time.slice(0, 5),
-                r.id,
-              );
-            } catch (e) {
-              if (e.status === 409) continue;
-              throw e;
-            }
-            await rows(
-              db,
-              "UPDATE transport_requests SET vehicle_id=?,vehicle_name=?,plate=?,version=version+1 WHERE id=?",
-              [target.id, target.name, target.plate, r.id],
-            );
-            await bindDrivers(db, r.id, target.id);
-            await event(db, u, r.id, "emergency_reassigned", {
-              from: v.id,
-              to: target.id,
-            });
-            moved++;
-            break;
-          }
-        }
-        response = { ok: true, moved, total: open.length };
+      if (action === "restore" && method === "POST" && parts.length === 3) {
+        return restoreVehicle(db, u, id, b);
+      } else if (
+        action === "emergency" &&
+        method === "POST" &&
+        parts.length === 3
+      ) {
+        return applyEmergency(db, u, id, b, key);
       } else if (method === "DELETE" && id) {
         const v = await resource(db, "vehicles", id);
         version(v, b);
@@ -607,8 +606,10 @@ export async function mutate(u, method, path, b, key) {
           [v.id],
         );
       } else if ((method === "POST" && !id) || (method === "PUT" && id)) {
+        let previousVehicle = null;
         if (id) {
           const v = await resource(db, "vehicles", id);
+          previousVehicle = v;
           version(v, b);
           if (
             v.deleted_at ||
@@ -622,18 +623,17 @@ export async function mutate(u, method, path, b, key) {
           )
             fail(409, "خودرو حذف شده یا مأموریت باز دارد.");
         }
+        const selectedType = await resolveVehicleType(
+          db,
+          b.bodyType,
+          previousVehicle?.vehicle_type_id,
+          b.vehicleTypeId,
+        );
         const data = [
           text(b.name),
           text(b.plate, 40),
           plateKey(b.plate),
-          choice(b.bodyType, [
-            "sedan",
-            "pickup_single",
-            "pickup_double",
-            "van",
-            "minibus",
-            "truck",
-          ]),
+          selectedType.code,
           choice(b.serviceType, ["passenger", "cargo", "both"]),
           integer(b.passengerCapacity, 0, 1000),
           integer(b.cargoCapacity, 0, 10000),
@@ -644,6 +644,7 @@ export async function mutate(u, method, path, b, key) {
           choice(b.ownership, ["org", "contractor"]),
           b.ownership === "contractor" ? text(b.contractorName, 150) : "",
           choice(b.status, ["ok", "down", "maintenance"]),
+          selectedType.id,
         ];
         if (
           (data[9] === null) !== (data[10] === null) ||
@@ -667,6 +668,7 @@ export async function mutate(u, method, path, b, key) {
           "ownership",
           "contractor_name",
           "status",
+          "vehicle_type_id",
         ];
         if (id)
           await rows(
@@ -701,6 +703,7 @@ export async function mutate(u, method, path, b, key) {
           "dispatcher",
           "requester",
           "driver",
+          "unit_manager",
         ]),
         active = bool(b.active);
       if (Number(id) === u.id && (!active || role !== "admin"))
@@ -717,8 +720,13 @@ export async function mutate(u, method, path, b, key) {
         ).length === 0
       )
         fail(409, "آخرین مدیر فعال باید حفظ شود.");
+      if (prev?.role_code === "unit_manager" && role !== "unit_manager")
+        fail(
+          409,
+          "تبدیل نقش مدیر واحد از این فرم مجاز نیست؛ ابتدا انتساب‌ها و مجوزهای او را بررسی کنید.",
+        );
       let unitId = null;
-      if (role === "requester") {
+      if (["requester", "unit_manager"].includes(role)) {
         const unit = (
           await rows(
             db,
@@ -728,6 +736,12 @@ export async function mutate(u, method, path, b, key) {
         )[0];
         if (!unit) fail(422, "واحد معتبر نیست.");
         unitId = unit.id;
+      }
+      if (prev && prev.unit_id !== unitId) {
+        const [schema] = await rows(db, 'SELECT MAX(version) version FROM schema_migrations');
+        const priorScopes = await rows(db, 'SELECT id FROM unit_role_assignments WHERE user_id=? AND active=1 LIMIT 1', [prev.id]);
+        const workflowScopes = Number(schema.version) >= 5 ? await rows(db, 'SELECT id FROM workflow_grants WHERE user_id=? AND active=1 LIMIT 1', [prev.id]) : [];
+        if (priorScopes.length || workflowScopes.length) fail(409, 'پیش از تغییر واحد کاربر، انتساب‌ها و مجوزهای فعال او باید بررسی و تعیین تکلیف شوند.');
       }
       const ids =
         role === "driver"
@@ -772,6 +786,13 @@ export async function mutate(u, method, path, b, key) {
         );
         userId = r.insertId;
       }
+      if (prev)
+        await endUserSessions(db, {
+          userId,
+          actorId: u.id,
+          ip: clientIp,
+          reason: "account_updated",
+        });
       await rows(db, "DELETE FROM user_vehicles WHERE user_id=?", [userId]);
       for (const v of ids)
         await rows(db, "INSERT INTO user_vehicles VALUES (?,?)", [userId, v]);
@@ -820,7 +841,7 @@ async function dashboardData(db) {
   );
   const topUnits = await rows(
     db,
-    `SELECT r.unit_name label,COUNT(*) value FROM transport_requests r WHERE ${predicate} GROUP BY r.unit_name ORDER BY value DESC,label LIMIT 5`,
+    `SELECT un.name label,r.unit_id unitId,COUNT(*) value FROM transport_requests r JOIN units un ON un.id=r.unit_id WHERE ${predicate} GROUP BY r.unit_id,un.name ORDER BY value DESC,label,r.unit_id LIMIT 5`,
     args,
   );
   const topCenters = await rows(
