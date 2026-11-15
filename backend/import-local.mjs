@@ -1,3 +1,7 @@
+import {
+  assertVehicleTypesSchema,
+  resolveVehicleType,
+} from "./vehicle-types.mjs";
 // ورود یک‌بارهٔ خروجی schema3 به دیتابیس خالی، با بازنشانی همهٔ رمزها.
 // اجرای واقعی فقط IMPORT_APPLY=YES؛ فایل ورودی هرگز حذف نمی‌شود.
 import { readFile, writeFile } from "node:fs/promises";
@@ -12,6 +16,7 @@ import {
   passwordHash,
 } from "./core.mjs";
 try {
+  await assertVehicleTypesSchema(pool);
   if (!process.env.IMPORT_FILE) throw Error("IMPORT_FILE لازم است.");
   const d = JSON.parse(await readFile(process.env.IMPORT_FILE, "utf8"));
   if (
@@ -140,10 +145,11 @@ try {
           ]);
           centers.set(name, r.insertId);
         }
-      for (const v of d.vehicles)
+      for (const v of d.vehicles) {
+        const type = await resolveVehicleType(db, v.bodyType);
         await rows(
           db,
-          "INSERT INTO vehicles(id,name,plate,plate_key,body_type,service_type,passenger_capacity,cargo_capacity,has_fridge,fridge_capacity,shift_start,shift_end,ownership,contractor_name,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+          "INSERT INTO vehicles(id,name,plate,plate_key,body_type,service_type,passenger_capacity,cargo_capacity,has_fridge,fridge_capacity,shift_start,shift_end,ownership,contractor_name,status,vehicle_type_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
           [
             integer(v.id),
             text(v.name),
@@ -160,8 +166,10 @@ try {
             v.ownership,
             v.contractorName || "",
             v.status,
+            type.id,
           ],
         );
+      }
       for (const u of d.users) {
         if (!/^[a-z0-9_.-]{3,32}$/.test(u.username))
           throw Error("نام کاربری نامعتبر: " + u.id);

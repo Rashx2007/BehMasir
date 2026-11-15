@@ -9,7 +9,10 @@
       rel="stylesheet"
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
     />
-    <link rel="stylesheet" href="style.css?v=14050723-mysql" />
+    <link rel="stylesheet" href="style.css?v=14050808-selects-06C5" />
+    <link rel="stylesheet" href="dashboard-soft.css?v=pilot-07B1" />
+    <link rel="stylesheet" href="header-nav.css?v=pilot-07F" />
+    <link rel="stylesheet" href="workflow-view.css?v=pilot-08" />
   </head>
   <body data-auth="locked">
     <main id="loginView" class="login-layout">
@@ -86,6 +89,14 @@
       </div>
 
       <nav class="header-nav">
+        <button class="tab-btn" data-tab="workflow" onclick="switchTab('workflow')" hidden>گردش درخواست</button>
+        <button
+          class="tab-btn"
+          data-tab="unit-overview"
+          onclick="switchTab('unit-overview')"
+        >
+          گزارش واحد
+        </button>
         <button
           class="tab-btn active"
           data-tab="dashboard"
@@ -230,6 +241,19 @@
     </header>
 
     <section id="tab-dashboard" class="tab-panel active">
+      <div class="dashboard-intro" aria-labelledby="dashboardIntroTitle">
+        <div class="dashboard-art" aria-hidden="true">
+          <span class="dashboard-folder-back"></span>
+          <span class="dashboard-folder-paper"><i></i><i></i><i></i></span>
+          <span class="dashboard-folder-front"></span>
+          <span class="dashboard-folder-emblem">✓</span>
+        </div>
+        <div class="dashboard-intro-copy">
+          <span class="dashboard-eyebrow">نمای کلی سامانه</span>
+          <h1 id="dashboardIntroTitle">داشبورد ناوگان</h1>
+          <p>وضعیت خودروها و درخواست‌ها، در یک نگاه</p>
+        </div>
+      </div>
       <div class="dash-layout">
         <aside class="dash-sidebar">
           <div class="sidebar-head">
@@ -458,6 +482,10 @@
       </div>
     </section>
 
+    <section id="tab-workflow" class="tab-panel"><div id="workflowPanel"></div></section>
+    <section id="tab-unit-overview" class="tab-panel">
+      <div id="unitOverviewPanel"></div>
+    </section>
     <section id="tab-units" class="tab-panel">
       <div id="unitsPanel"></div>
     </section>
@@ -473,6 +501,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <div id="toastRoot"></div>
     <script src="pickers.js?v=14050723-mysql"></script>
-    <script src="app.js?v=14050723-mysql"></script>
+    <script src="app.js?v=14050808-selects-06C5"></script>
+    <script src="workflow.js?v=pilot-08-flow-reason"></script>
   </body>
 </html>

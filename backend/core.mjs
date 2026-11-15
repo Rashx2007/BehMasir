@@ -69,13 +69,15 @@ export function plateKey(v) {
     )
     .replace(/[\s\-ـ]/g, "");
 }
+export function validateNewPassword(password) {
+  if (typeof password !== "string" || password.length < 8 || password.length > 128 ||
+      /[\x00-\x1F\x7F]/.test(password) || !/[A-Z]/.test(password) ||
+      !/[a-z]/.test(password) || !/[0-9]/.test(password) ||
+      !/[\x21-\x2F\x3A-\x40\x5B-\x60\x7B-\x7E]/.test(password))
+    fail(422, "رمز باید ۸ تا ۱۲۸ نویسه و شامل حرف بزرگ و کوچک انگلیسی، رقم و علامت خاص باشد.");
+}
 export async function passwordHash(password) {
-  if (
-    typeof password !== "string" ||
-    password.length < 12 ||
-    password.length > 128
-  )
-    fail(422, "رمز باید بین ۱۲ تا ۱۲۸ نویسه باشد.");
+  validateNewPassword(password);
   const salt = randomBytes(16).toString("hex");
   const b = await scrypt(password, salt, 64, {
     N: 32768,

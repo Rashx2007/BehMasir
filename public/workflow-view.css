@@ -1,0 +1,19 @@
+/* Workflow overview and current decision, scoped to workflow only. */
+.wf-intro { padding: 24px; border: 1px solid var(--border); }
+.wf-flow-head { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+.wf-flow-head h2 { margin: 4px 0 0; color: var(--text); font-size: 1.24rem; }
+.wf-flow-eyebrow { color: var(--primary); font-size: .82rem; font-weight: 700; }
+.wf-flow-caption { color: var(--text-muted); font-size: .8rem; white-space: nowrap; }
+.wf-flow-steps { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); list-style: none; margin: 0; padding: 0; gap: 10px; }
+.wf-flow-step { position: relative; min-height: 76px; padding: 12px; display: flex; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); color: var(--text); }
+.wf-flow-step:not(:last-child)::after { content: '←'; direction: ltr; unicode-bidi: isolate; position: absolute; left: -12px; z-index: 1; color: var(--primary); background: var(--card); border: 1px solid var(--border); border-radius: 50%; width: 22px; height: 22px; display: grid; place-items: center; font-size: 14px; line-height: 1; }
+.wf-flow-number { flex: 0 0 32px; width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; color: var(--primary); background: var(--card); border: 1px solid var(--border); font-size: .86rem; font-weight: 800; }
+.wf-flow-label { font-weight: 700; font-size: .87rem; line-height: 1.55; overflow-wrap: anywhere; }
+.wf-flow-notes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 18px; }
+.wf-flow-notes p { display: flex; align-items: start; gap: 10px; margin: 0; padding: 12px; border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-size: .88rem; line-height: 1.8; }
+.wf-note-icon { flex: 0 0 22px; width: 22px; height: 22px; border: 1px solid var(--primary); border-radius: 50%; color: var(--primary); display: grid; place-items: center; font: 700 .8rem/1 sans-serif; margin-top: 2px; }
+.wf-decision-reason { margin: 14px 0; padding: 12px 14px; background: var(--bg); border: 1px solid var(--border); border-inline-start: 3px solid var(--primary); border-radius: 8px; }
+.wf-decision-reason strong { color: var(--text); font-size: .88rem; }
+.wf-decision-reason p { margin: 5px 0 0; color: var(--text); line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 900px) { .wf-flow-steps { grid-template-columns: repeat(2,minmax(0,1fr)); } .wf-flow-step:not(:last-child)::after { display: none; } .wf-flow-step:last-child { grid-column: 1 / -1; } }
+@media (max-width: 520px) { .wf-intro { padding: 16px; } .wf-flow-head { align-items: start; } .wf-flow-notes { grid-template-columns: 1fr; } .wf-flow-step { min-height: 68px; padding: 10px; } .wf-flow-caption { display: none; } }

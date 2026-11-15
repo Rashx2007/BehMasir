@@ -1,0 +1,60 @@
+{
+  "schema_version": 4,
+  "sql_sha256": "1ade9e243806927719174e93868c58bd75e407f768bd35ecb4447a96fc6310e4",
+  "statement_count": 16,
+  "tables": {
+    "access_permissions": [
+      "code",
+      "title",
+      "is_active",
+      "version",
+      "created_at",
+      "edited_at"
+    ],
+    "access_role_permissions": [
+      "role_code",
+      "permission_code",
+      "created_at"
+    ],
+    "unit_role_assignments": [
+      "id",
+      "user_id",
+      "role_code",
+      "unit_id",
+      "include_descendants",
+      "active",
+      "version",
+      "created_at",
+      "edited_at"
+    ]
+  },
+  "triggers": [
+    "bh4_ap_bi",
+    "bh4_ap_bu",
+    "bh4_ap_bd",
+    "bh4_ap_ai",
+    "bh4_ap_au",
+    "bh4_ura_bi",
+    "bh4_ura_bu",
+    "bh4_ura_bd",
+    "bh4_ura_ai",
+    "bh4_ura_au",
+    "bh4_arp_bu",
+    "bh4_arp_ai",
+    "bh4_arp_ad"
+  ],
+  "role": {
+    "code": "unit_manager",
+    "title": "مدیر واحد"
+  },
+  "permissions": [
+    {
+      "code": "requests.read",
+      "title": "مشاهدهٔ درخواست‌های محدودهٔ مجاز"
+    },
+    {
+      "code": "reports.read",
+      "title": "مشاهدهٔ گزارش‌های محدودهٔ مجاز"
+    }
+  ]
+}

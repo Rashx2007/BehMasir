@@ -1,3 +1,7 @@
+let fleetDialogSequence = 0;
+let fleetDeletedItems = [];
+let pendingFleetRestore = null;
+let pendingFleetEmergency = null;
 // ─── Data ───
 const STORAGE_KEY = "fleet_demo_v1";
 
@@ -401,14 +405,8 @@ const badgeText = (car) =>
 const fillClass = (car) =>
   pct(car) >= 100 ? "fill-red" : pct(car) >= 60 ? "fill-amber" : "fill-green";
 
-const BODY_TYPE_LABELS = {
-  sedan: "سواری سدان",
-  pickup_single: "وانت تک‌کابین",
-  pickup_double: "وانت دوکابین",
-  van: "ون",
-  minibus: "مینی‌بوس",
-  truck: "کامیونت/کامیون",
-};
+// Loaded from vehicle_types after authentication; no hardcoded reference list.
+const BODY_TYPE_LABELS = Object.create(null);
 const SERVICE_TYPE_LABELS = {
   passenger: "مسافر",
   cargo: "بار",
@@ -420,8 +418,8 @@ const STATUS_LABELS = {
   maintenance: "در حال تعمیر",
 };
 const OWNERSHIP_LABELS = {
-  org: "متعلق به اداره",
-  contractor: "قراردادی (شرکت بیرونی)",
+  org: "دولتی",
+  contractor: "پیمان‌کار",
 };
 
 // آیا خودرو در این ساعت مشخص فعال است؟ (شیفت کاری)
@@ -515,6 +513,8 @@ function render() {
   else document.getElementById("requestsTbody").replaceChildren();
   if (allowedTabs().includes("history")) renderHistory();
   else document.getElementById("historyTbody").replaceChildren();
+  if (typeof renderWorkflowPanel === "function") renderWorkflowPanel();
+  renderUnitOverview();
   renderUsersPanel();
   renderUnitsPanel();
   renderMissions();
@@ -562,7 +562,7 @@ function renderCars() {
         </div>
         <div style="display:flex;gap:6px;align-items:center">
           <span class="badge ${badgeClass(car)}">${badgeText(car)}</span>
-          <button onclick="handleCarEmergency(${car.id})" title="انتقال اضطراری نمونه‌ها"
+          <button onclick="handleCarEmergency(${car.id})" title="بررسی بحران و پیش‌نمایش انتقال ایمن"
             style="background:#fee2e2;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:.75rem;color:#dc2626">
             🚨 بحران
           </button>
@@ -678,7 +678,7 @@ function renderVehicleSidebar() {
           <span class="badge ${status[1]}">${status[0]}</span>
           ${car.hasFridge ? '<span class="tag tag-cold">❄️ یخچال‌دار</span>' : ""}
         </div>
-        <button class="btn-crisis" onclick="handleCarEmergency(${car.id})" title="انتقال اضطراری نمونه‌ها">🚨 بحران</button>
+        <button class="btn-crisis" onclick="handleCarEmergency(${car.id})" title="بررسی بحران و پیش‌نمایش انتقال ایمن">🚨 بحران</button>
       </div>
       <div class="ring-wrap">
         <svg class="ring" viewBox="0 0 80 80">
@@ -770,7 +770,7 @@ function recentBox(days, total) {
     .join("");
   return `<div class="dash-box">
     ${dashBoxHead("درخواست‌های موفق", `انجام‌شده در ${faNum(RECENT_DAYS)} روز گذشته`, DASH_ICONS.check)}
-    <div class="recent-total"><b>${faNum(total)}</b> درخواست تحویل‌شده</div>
+    <div class="recent-total"><b>${faNum(total)}</b> درخواست انجام‌شده</div>
     <div class="recent-days">${bars}</div>
   </div>`;
 }
@@ -843,7 +843,13 @@ function renderRequests() {
   const cars = getCarsWithSamples();
   const carMap = Object.fromEntries(cars.map((c) => [c.id, c]));
   const rows = samples
-    .filter((s) => canSeeSample(s) && s.date >= todayStr())
+    .filter(
+      (s) =>
+        canSeeSample(s) &&
+        (currentUser?.role === "unit_manager"
+          ? ["scheduled", "enroute"].includes(s.progress)
+          : s.date >= todayStr()),
+    )
     .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
   tbody.innerHTML =
     rows.length === 0
@@ -858,7 +864,7 @@ function renderRequests() {
                   ? "active"
                   : getSampleStatus(s.date, s.time);
             const stInfo = {
-              delivered: ["تحویل شده", "badge-green"],
+              delivered: ["انجام‌شده", "badge-green"],
               active: ["در حال حمل", "badge-blue"],
               pending: ["در انتظار", "badge-amber"],
               overdue: ["تاخیر", "badge-red"],
@@ -873,9 +879,10 @@ function renderRequests() {
           <td class="req-route">${esc(s.origin)} ← ${esc(s.destination)}${s.unit ? `<div class="req-unit">${esc(s.unit)}</div>` : ""}</td>
           <td><span class="time-chip">${esc(s.time)}</span></td>
           <td><span class="badge ${stInfo[1]}">${stInfo[0]}</span></td>
-          <td><span class="req-car"><span class="legend-dot" style="background:${color}"></span>${car ? esc(car.name) : "—"}</span></td>
+          <td><span class="req-car"><span class="legend-dot" style="background:${color}"></span>${car ? esc(car.name) : esc(s.carName || "—")}</span></td>
                     <td><span class="req-actions">
-            ${canDeliverSample(s) && s.status !== "delivered" ? `<button class="icon-btn success" title="ثبت تحویل" onclick="deliverSample(${s.id})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg></button>` : ""}
+            ${canDeliverSample(s) && s.status !== "delivered" ? `<button class="icon-btn success" title="پایان مأموریت" onclick="deliverSample(${s.id})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg></button>` : ""}
+            ${currentUser?.role === "unit_manager" && canAccess("requests.read") ? `<button class="quiet-button" onclick="showUnitRequestDetails(${s.id})">جزئیات</button>` : ""}
             ${canDeleteSample(s) ? `<button class="icon-btn danger" title="حذف" onclick="deleteSample(${s.id})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>` : ""}
           </span></td>
         </tr>`;
@@ -901,7 +908,7 @@ function renderHistory() {
       <td class="req-route">${esc(h.origin)} ← ${esc(h.destination)}${h.unit ? `<div class="req-unit">${esc(h.unit)}</div>` : ""}</td>
       <td><span class="time-chip">${h.time}</span></td>
       <td>${esc(h.carName)}</td>
-      <td><span class="badge badge-green">تحویل شده</span></td>
+      <td><span class="badge badge-green">انجام‌شده</span></td>
     </tr>`,
           )
           .join("");
@@ -1260,6 +1267,11 @@ async function confirmRouteOption() {
 }
 
 function closeModal() {
+  if (typeof destroyWorkflowPickers === "function") destroyWorkflowPickers();
+  fleetDialogSequence++;
+  fleetDeletedItems = [];
+  pendingFleetRestore = null;
+  pendingFleetEmergency = null;
   window.Pickers?.closeAll();
   pendingConfirmAction = null;
   if (vehicleShiftPickers) {
@@ -1272,27 +1284,164 @@ function closeModal() {
   pendingOptions = [];
 }
 
-// ─── مدیریت بحران خودرو ───
-function handleCarEmergency(id) {
-  const v = vehicles.find((x) => x.id === id);
-  if (!v) return;
-  openLocalConfirm(
-    "انتقال مأموریت‌ها",
-    "مأموریت‌های باز با کنترل ظرفیت و شیفت به خودروهای دیگر منتقل شوند؟",
-    async () => {
-      const r = await serverWrite(
-        "vehicles/" + id + "/emergency",
-        "POST",
-        { version: v.version },
-        true,
-      );
-      if (r)
-        showToast(
-          r.moved === r.total ? "success" : "warning",
-          `${faNum(r.moved)} از ${faNum(r.total)} مأموریت منتقل شد.`,
-        );
-    },
+// ─── بازیابی کنترل‌شده و پیش‌نمایش بحران ───
+function fleetLoading(title) {
+  closeModal();
+  const seq = fleetDialogSequence;
+  document.getElementById("modalRoot").innerHTML =
+    `<div class="modal-overlay"><section class="modal-box"><div class="modal-head"><h2 class="modal-title">${esc(title)}</h2><button class="modal-close" onclick="closeModal()">×</button></div><div class="modal-body"><p>در حال دریافت اطلاعات…</p></div></section></div>`;
+  return seq;
+}
+function fleetReadError(error, seq) {
+  if (seq !== fleetDialogSequence) return;
+  if (error.status === 401) lockServerView();
+  else {
+    closeModal();
+    showToast("error", error.message);
+  }
+}
+async function openDeletedVehicles(before = null) {
+  if (currentUser?.role !== "admin") return;
+  const seq = fleetLoading("خودروهای حذف‌شده");
+  try {
+    const data = await apiRequest(
+      "vehicles/deleted" +
+        (before ? "?before=" + encodeURIComponent(before) : ""),
+    );
+    if (seq !== fleetDialogSequence || currentUser?.role !== "admin") return;
+    fleetDeletedItems = data.items;
+    document.getElementById("modalRoot").innerHTML =
+      `<div class="modal-overlay"><section class="modal-box"><div class="modal-head"><h2 class="modal-title">خودروهای حذف‌شده</h2><button class="modal-close" onclick="closeModal()">×</button></div><div class="modal-body settings-stack"><p>بازیابی فقط رکورد خودرو را برمی‌گرداند؛ خودرو در وضعیت غیرعملیاتی «تعمیرات» قرار می‌گیرد و اتصال‌های قبلی رانندگان خودکار فعال نمی‌شوند.</p>${data.items.length ? data.items.map((v) => `<article class="settings-card"><strong>${esc(v.name)}</strong><p>پلاک: ${esc(v.plate)} · نسخه: ${faNum(v.version)}</p><p>زمان حذف (UTC): <span dir="ltr">${esc(v.deletedAt)}</span></p><button class="btn-secondary" onclick="openVehicleRestore(${Number(v.id)})">بررسی بازیابی</button></article>`).join("") : "<p>خودروی حذف‌شده‌ای در این صفحه وجود ندارد.</p>"}</div><div class="modal-foot"><button class="btn-secondary" onclick="closeModal()">بستن</button>${data.cursor ? `<button class="btn-secondary" onclick="openDeletedVehicles(${Number(data.cursor)})">صفحهٔ بعد</button>` : ""}</div></section></div>`;
+  } catch (error) {
+    fleetReadError(error, seq);
+  }
+}
+function openVehicleRestore(id) {
+  if (currentUser?.role !== "admin") return;
+  const vehicle = fleetDeletedItems.find((v) => v.id === id);
+  if (!vehicle) return;
+  closeModal();
+  pendingFleetRestore = { vehicle, key: crypto.randomUUID() };
+  document.getElementById("modalRoot").innerHTML =
+    `<div class="modal-overlay"><section class="modal-box"><div class="modal-head"><h2 class="modal-title">بازیابی خودرو</h2><button class="modal-close" onclick="closeModal()">×</button></div><div class="modal-body settings-stack"><p>خودرو: <b>${esc(vehicle.name)}</b> — پلاک ${esc(vehicle.plate)}</p><p>پس از بازیابی، خودرو در وضعیت «تعمیرات» است؛ پیش از استفاده باید بررسی و راننده دوباره تخصیص داده شود. این کار بازگردانی نسخهٔ قدیمی مشخصات نیست.</p><div class="form-group"><label for="fleetRestoreReason">دلیل بازیابی (۵ تا ۵۰۰ نویسه)</label><textarea id="fleetRestoreReason" maxlength="500" rows="3"></textarea></div></div><div class="modal-foot"><button class="btn-secondary" onclick="openDeletedVehicles()">بازگشت به فهرست</button><button class="btn-primary" data-fleet-submit onclick="submitVehicleRestore()">بازیابی در وضعیت تعمیرات</button></div></section></div>`;
+}
+async function submitVehicleRestore() {
+  const pending = pendingFleetRestore;
+  if (!pending || currentUser?.role !== "admin") return;
+  const reason = document.getElementById("fleetRestoreReason").value.trim();
+  if ([...reason].length < 5) {
+    showToast("warning", "دلیل روشن، حداقل ۵ نویسه، وارد کنید.");
+    return;
+  }
+  await fleetWrite(
+    "vehicles/" + pending.vehicle.id + "/restore",
+    { version: pending.vehicle.version, reason },
+    pending.key,
+    () =>
+      showToast(
+        "success",
+        "خودرو بازیابی شد؛ وضعیت تعمیرات دارد و نیازمند بررسی و تخصیص مجدد راننده است.",
+      ),
   );
+}
+async function handleCarEmergency(id) {
+  if (!requireAccess("fleet.write")) return;
+  const vehicle = vehicles.find((v) => v.id === id);
+  if (!vehicle) return;
+  const seq = fleetLoading("پیش‌نمایش مدیریت بحران");
+  try {
+    const plan = await apiRequest(
+      "vehicles/" +
+        id +
+        "/emergency-preview?version=" +
+        encodeURIComponent(vehicle.version),
+    );
+    if (seq !== fleetDialogSequence || !canAccess("fleet.write")) return;
+    pendingFleetEmergency = { plan, key: crypto.randomUUID() };
+    const detail = (r) =>
+      `درخواست ${faNum(r.requestId)}: ${esc(r.origin)} ← ${esc(r.destination)} · ${esc(formatRouteDate(r.date))}، ${esc(r.time)}`;
+    document.getElementById("modalRoot").innerHTML =
+      `<div class="modal-overlay"><section class="modal-box"><div class="modal-head"><h2 class="modal-title">پیش‌نمایش مدیریت بحران</h2><button class="modal-close" onclick="closeModal()">×</button></div><div class="modal-body settings-stack"><p>خودروی مبدأ: <b>${esc(plan.source.name)}</b> — ${esc(plan.source.plate)}</p><p><b>با تأیید، خودروی مبدأ خارج از سرویس می‌شود.</b> فقط مأموریت‌های شروع‌نشدهٔ قابل‌انتقال جابه‌جا می‌شوند؛ ${faNum(plan.moves.length)} مورد از ${faNum(plan.total)} مأموریت باز.</p><p>انتخاب مقصد محافظه‌کارانه است: نوع خودرو، مالکیت/پیمان‌کار، قابلیت سرویس، یخچال، شیفت، ظرفیت روزانه و راننده بررسی می‌شوند. چون مدت سفر ثبت نشده، در این انتقال خودکار برای هر خودرو و راننده در هر روز حداکثر یک مأموریت باز پذیرفته می‌شود؛ موارد دیگر برای تصمیم دستی باقی می‌مانند. این پیشنهاد تضمین بهینه‌بودن مسیر یا تحویل فیزیکی بار نیست.</p><h3>انتقال‌های پیشنهادی</h3>${plan.moves.length ? plan.moves.map((r) => `<article class="settings-card"><p>${detail(r)}</p><p>مقصد: <b>${esc(r.targetName)}</b> — ${esc(r.targetPlate)}</p><p>راننده‌ها: ${r.drivers.map((d) => esc(d.name)).join("، ")}</p></article>`).join("") : "<p>انتقال خودکار مجازی پیدا نشد؛ تأیید فقط بحران و خارج‌ازسرویس‌شدن مبدأ را ثبت می‌کند.</p>"}<h3>موارد منتقل‌نشونده</h3>${plan.blocked.length ? plan.blocked.map((r) => `<article class="settings-card"><p>${detail(r)}</p><p>${esc(r.reason)}</p></article>`).join("") : "<p>موردی نیست.</p>"}<div class="form-group"><label for="fleetEmergencyReason">دلیل بحران (۵ تا ۵۰۰ نویسه)</label><textarea id="fleetEmergencyReason" maxlength="500" rows="3"></textarea></div><label class="checkbox-row"><input type="checkbox" id="fleetEmergencyAck">می‌پذیرم که مأموریت‌های درحال اجرا منتقل نمی‌شوند و تحویل حضوری و هماهنگی عملیاتی، نیازمند رسیدگی جداگانه است.</label></div><div class="modal-foot"><button class="btn-secondary" onclick="closeModal()">انصراف</button><button class="btn-secondary" onclick="handleCarEmergency(${Number(id)})">پیش‌نمایش تازه</button><button class="btn-primary" data-fleet-submit onclick="submitFleetEmergency()">ثبت بحران و اجرای انتقال‌های بالا</button></div></section></div>`;
+  } catch (error) {
+    fleetReadError(error, seq);
+  }
+}
+async function submitFleetEmergency() {
+  const pending = pendingFleetEmergency;
+  if (!pending || !canAccess("fleet.write")) return;
+  const reason = document.getElementById("fleetEmergencyReason").value.trim();
+  const acknowledged = document.getElementById("fleetEmergencyAck").checked;
+  if ([...reason].length < 5 || !acknowledged) {
+    showToast(
+      "warning",
+      "دلیل بحران را وارد و محدودیت‌های انتقال را تأیید کنید.",
+    );
+    return;
+  }
+  const plan = pending.plan;
+  await fleetWrite(
+    "vehicles/" + plan.source.id + "/emergency",
+    {
+      version: plan.source.version,
+      fingerprint: plan.fingerprint,
+      reason,
+      acknowledged,
+    },
+    pending.key,
+    (result) =>
+      showToast(
+        result.blocked.length ? "warning" : "success",
+        `مبدأ خارج از سرویس شد؛ ${faNum(result.moved)} از ${faNum(result.total)} مأموریت منتقل شد. ${faNum(result.blocked.length)} مورد نیازمند رسیدگی جداگانه است.`,
+      ),
+  );
+}
+async function fleetWrite(path, data, key, success) {
+  if (serverBusy) {
+    showToast("warning", "عملیات قبلی هنوز در حال انجام است.");
+    return;
+  }
+  const seq = fleetDialogSequence;
+  serverBusy = true;
+  document
+    .querySelectorAll("[data-fleet-submit]")
+    .forEach((b) => (b.disabled = true));
+  let committed = false;
+  try {
+    const result = await apiRequest(path, "POST", data, key);
+    committed = true;
+    if (seq === fleetDialogSequence) closeModal();
+    await refreshServerState();
+    render();
+    success(result);
+  } catch (error) {
+    if (error.status === 401) lockServerView();
+    if (error.status === 409 && seq === fleetDialogSequence) {
+      pendingFleetEmergency = null;
+      pendingFleetRestore = null;
+      try {
+        await refreshServerState();
+        render();
+      } catch {}
+      showToast(
+        "warning",
+        "اطلاعات تغییر کرده است؛ فهرست یا پیش‌نمایش را دوباره باز کنید.",
+      );
+    }
+    showToast(
+      committed ? "warning" : "error",
+      committed
+        ? "عملیات ثبت شد، ولی تازه‌سازی انجام نشد؛ پیش از تکرار وضعیت را بررسی کنید."
+        : error.message,
+    );
+  } finally {
+    serverBusy = false;
+    if (seq === fleetDialogSequence)
+      document
+        .querySelectorAll("[data-fleet-submit]")
+        .forEach(
+          (b) => (b.disabled = !pendingFleetEmergency && !pendingFleetRestore),
+        );
+  }
 }
 
 // ─── اعلان‌ها ───
@@ -1361,6 +1510,7 @@ function switchTab(name) {
     .forEach((panel) =>
       panel.classList.toggle("active", panel.id === `tab-${name}`),
     );
+  if (name === "workflow" && typeof renderWorkflowPanel === "function") renderWorkflowPanel(true);
   if (name === "centers") initCentersMap();
   if (name === "vehicles") renderVehicles();
   refreshGuides();
@@ -1760,6 +1910,16 @@ function renderVehicles() {
   const grid = document.getElementById("vehiclesGrid");
   if (!grid) return; // اگر تب هنوز در DOM نیست
 
+  let deletedButton = document.getElementById("deletedVehiclesButton");
+  if (currentUser?.role === "admin" && !deletedButton) {
+    deletedButton = document.createElement("button");
+    deletedButton.id = "deletedVehiclesButton";
+    deletedButton.className = "btn-secondary";
+    deletedButton.style.marginBottom = "12px";
+    deletedButton.textContent = "خودروهای حذف‌شده / بازیابی";
+    deletedButton.onclick = () => openDeletedVehicles();
+    grid.before(deletedButton);
+  } else if (currentUser?.role !== "admin") deletedButton?.remove();
   const cars = getCarsWithSamples();
   grid.innerHTML = cars
     .map((car) => {
@@ -1790,7 +1950,7 @@ function renderVehicles() {
         </div>
       </div>
       <div class="vehicle-tags">
-        <span class="tag">${BODY_TYPE_LABELS[car.bodyType] || car.bodyType}</span>
+        <span class="tag">${esc(BODY_TYPE_LABELS[car.bodyType] || car.bodyType)}</span>
         <span class="tag">${SERVICE_TYPE_LABELS[car.serviceType] || car.serviceType}</span>
         ${car.hasFridge ? `<span class="tag tag-cold">❄️ یخچال‌دار</span>` : ""}
         <span class="tag ${statusTagClass}">${STATUS_LABELS[car.status]}</span>
@@ -1828,7 +1988,9 @@ function openVehicleForm(vehicleId) {
     : {
         name: "",
         plate: "",
-        bodyType: "sedan",
+        bodyType:
+          serverVehicleTypes.find((t) => t.isActive && !t.deletedAt)?.code ||
+          "",
         serviceType: "cargo",
         passengerCapacity: 0,
         cargoCapacity: 5,
@@ -1843,6 +2005,13 @@ function openVehicleForm(vehicleId) {
       };
   if (!v) {
     showToast("error", "خودرو پیدا نشد.");
+    return;
+  }
+  const typeChoices = serverVehicleTypes.filter(
+    (t) => (t.isActive && !t.deletedAt) || (isEdit && t.code === v.bodyType),
+  );
+  if (!typeChoices.length) {
+    showToast("error", "نوع خودرو فعالی در دیتابیس تعریف نشده است.");
     return;
   }
   const is24h = !v.shiftStart && !v.shiftEnd;
@@ -1871,10 +2040,10 @@ function openVehicleForm(vehicleId) {
             <div class="form-group">
               <label>نوع بدنه</label>
               <select id="vf_bodyType">
-                ${Object.entries(BODY_TYPE_LABELS)
+                ${typeChoices
                   .map(
-                    ([k, l]) =>
-                      `<option value="${k}" ${v.bodyType === k ? "selected" : ""}>${l}</option>`,
+                    (t) =>
+                      `<option value="${esc(t.code)}" ${v.bodyType === t.code ? "selected" : ""}>${esc(t.title)}${!t.isActive || t.deletedAt ? " (غیرفعال)" : ""}</option>`,
                   )
                   .join("")}
               </select>
@@ -2033,6 +2202,8 @@ async function saveVehicleForm(id) {
     name: val("name").trim(),
     plate: val("plate").trim(),
     bodyType: val("bodyType"),
+    vehicleTypeId: serverVehicleTypes.find((t) => t.code === val("bodyType"))
+      ?.id,
     serviceType: val("serviceType"),
     passengerCapacity: Number(val("passengerCapacity")),
     cargoCapacity: Number(val("cargoCapacity")),
@@ -2260,6 +2431,7 @@ const ROLE_LABELS = {
   dispatcher: "مسئول ناوگان",
   requester: "درخواست‌کننده",
   driver: "راننده",
+  unit_manager: "مدیر واحد",
 };
 const ROLE_RULES = {
   admin: {
@@ -2301,6 +2473,12 @@ const shownGuides = new Set();
 function canAccess(permission) {
   if (!currentUser || !currentUser.active || sessionExpiresAt <= Date.now())
     return false;
+  if (currentUser.role === "unit_manager")
+    return (
+      currentUser.access?.enforced === true &&
+      ["requests.read", "reports.read"].includes(permission) &&
+      currentUser.access.permissions.includes(permission)
+    );
   const rule = ROLE_RULES[currentUser.role];
   return (
     !!rule &&
@@ -2316,9 +2494,15 @@ function requireAccess(permission) {
   return false;
 }
 function allowedTabs() {
-  return currentUser && sessionExpiresAt > Date.now()
-    ? ROLE_RULES[currentUser.role]?.tabs || []
-    : [];
+  const workflowTabs = typeof serverWorkflowVersion !== 'undefined' && serverWorkflowVersion === 1 ? ['workflow'] : [];
+  if (!currentUser || sessionExpiresAt <= Date.now()) return [];
+  if (currentUser.role === "unit_manager")
+    return [
+      "unit-overview",
+      ...(canAccess("requests.read") ? ["requests", "history"] : []),
+      ...workflowTabs,
+    ];
+  return [...(ROLE_RULES[currentUser.role]?.tabs || []), ...workflowTabs];
 }
 function isFleetManager() {
   return canAccess("requests.manage");
@@ -2348,6 +2532,8 @@ function canDeliverSample(record) {
   );
 }
 function clearFleetContent() {
+  if (centersLayer) centersLayer.clearLayers();
+  clearDraft();
   [
     "statsBar",
     "carsGrid",
@@ -2362,6 +2548,7 @@ function clearProtectedContent() {
   [
     "requestsTbody",
     "historyTbody",
+    "unitOverviewPanel",
     "usersPanel",
     "unitsPanel",
     "missionsPanel",
@@ -2380,6 +2567,22 @@ function userDisplayName(user) {
 }
 function applyRoleVisibility() {
   const tabs = allowedTabs();
+  if (!tabs.includes(currentTab)) currentTab = tabs[0] || "";
+  document.getElementById("tab-requests").querySelector(".form-card").hidden =
+    !canAccess("requests.create") || (typeof serverWorkflowEnabled !== "undefined" && serverWorkflowEnabled);
+  document
+    .querySelector("#tab-requests .req-layout")
+    .classList.toggle("read-only", currentUser?.role === "unit_manager" || document.querySelector("#tab-requests .form-card").hidden);
+  document.querySelector("#tab-requests .req-list-head > span").textContent =
+    currentUser?.role === "unit_manager"
+      ? "درخواست‌های باز محدوده"
+      : "درخواست‌های امروز و پیش‌رو";
+  document
+    .querySelectorAll(".tab-btn[data-tab]")
+    .forEach((b) => b.classList.toggle("active", b.dataset.tab === currentTab));
+  document
+    .querySelectorAll(".tab-panel")
+    .forEach((p) => p.classList.toggle("active", p.id === "tab-" + currentTab));
   document.body.dataset.auth = currentUser ? "open" : "locked";
   document.getElementById("loginView").hidden = !!currentUser;
   document.querySelectorAll(".tab-btn[data-tab]").forEach((button) => {
@@ -2393,7 +2596,9 @@ function applyRoleVisibility() {
   const name = currentUser
     ? String(userDisplayName(currentUser) || "").trim()
     : "";
-  const role = currentUser ? ROLE_LABELS[currentUser.role] : "";
+  const role = currentUser
+    ? currentUser.roleTitle || ROLE_LABELS[currentUser.role] || "نقش ناشناخته"
+    : "";
   userLabel.textContent = currentUser
     ? name === role
       ? name
@@ -2502,6 +2707,7 @@ async function addUnit() {
   if (
     await serverWrite("units", "POST", {
       name: document.getElementById("newUnitName").value.trim(),
+      parentId: unitParentInput("newUnitParent"),
     })
   )
     document.getElementById("newUnitName").value = "";
@@ -2516,8 +2722,72 @@ function removeUnit(index) {
     r = serverUnitRecords.find((x) => x.name === name);
   if (r)
     openLocalConfirm("حذف واحد", `واحد «${name}» حذف شود؟`, () =>
-      serverWrite("units/" + r.id, "DELETE", {}, true),
+      serverWrite("units/" + r.id, "DELETE", { version: r.version }, true),
     );
+}
+function unitParentInput(field) {
+  const value = document.getElementById(field).value;
+  return value === "" ? null : Number(value);
+}
+function unitParentOptions(excludedId = null, selectedId = null) {
+  return (
+    `<option value="" ${selectedId === null ? "selected" : ""}>بدون والد — سطح اول</option>` +
+    serverUnitRecords
+      .filter((r) => r.id !== excludedId && !r.ancestorIds.includes(excludedId))
+      .map(
+        (r) =>
+          `<option value="${r.id}" ${r.id === selectedId ? "selected" : ""}>${esc(r.path)}</option>`,
+      )
+      .join("")
+  );
+}
+function openUnitParentForm(id) {
+  if (!requireAccess("units.write")) return;
+  const r = serverUnitRecords.find((x) => x.id === id);
+  if (!r) return;
+  closeModal();
+  document.getElementById("modalRoot").innerHTML =
+    `<div class="modal-overlay"><div class="modal-box"><div class="modal-head"><h2 class="modal-title">تغییر والد واحد</h2><button class="modal-close" aria-label="بستن" onclick="closeModal()">×</button></div>
+  <form onsubmit="event.preventDefault();saveUnitParent(${r.id},${r.version})"><div class="modal-body form-grid">
+  <p class="full">واحد: <strong>${esc(r.name)}</strong></p>
+  <p class="full">این عملیات، واحد و تمام زیرواحدهای آن را در ساختار جابه‌جا می‌کند؛ محدوده‌های دارای مجوز زیرواحدها ممکن است تغییر کنند؛ پس از جابه‌جایی، دسترسی‌ها و تأییدکنندگان را بررسی کنید.</p>
+  <div class="form-group full"><label for="unitParentEdit">واحد بالادست</label><select id="unitParentEdit">${unitParentOptions(r.id, r.parentId)}</select></div>
+  </div><div class="modal-foot"><button type="button" class="btn-secondary" onclick="closeModal()">انصراف</button><button type="submit" class="btn-primary">ذخیرهٔ والد</button></div></form></div></div>`;
+}
+async function saveUnitParent(id, expectedVersion) {
+  await serverWrite(
+    "units/" + id + "/parent",
+    "PUT",
+    {
+      version: expectedVersion,
+      parentId: unitParentInput("unitParentEdit"),
+    },
+    true,
+  );
+}
+function openUnitRenameForm(id) {
+  if (!requireAccess("units.write")) return;
+  const r = serverUnitRecords.find((x) => x.id === id);
+  if (!r) return;
+  closeModal();
+  document.getElementById("modalRoot").innerHTML =
+    `<div class="modal-overlay"><div class="modal-box"><div class="modal-head"><h2 class="modal-title">تغییر نام واحد</h2><button class="modal-close" aria-label="بستن" onclick="closeModal()">×</button></div>
+  <form onsubmit="event.preventDefault();saveUnitRename(${r.id},${r.version})"><div class="modal-body form-grid">
+  <p class="full">نام فعلی: <strong>${esc(r.name)}</strong></p>
+  <p class="full">شناسه، کاربران و ارتباط‌های واحد حفظ می‌شوند. نام ثبت‌شده در درخواست‌های قبلی تغییر نمی‌کند؛ تاریخچهٔ تغییر نام نیز نگهداری می‌شود.</p>
+  <div class="form-group full"><label for="unitRenameInput">نام جدید واحد</label><input id="unitRenameInput" type="text" maxlength="100" required value="${esc(r.name)}"></div>
+  </div><div class="modal-foot"><button type="button" class="btn-secondary" onclick="closeModal()">انصراف</button><button type="submit" class="btn-primary">ذخیرهٔ نام</button></div></form></div></div>`;
+}
+async function saveUnitRename(id, expectedVersion) {
+  await serverWrite(
+    "units/" + id + "/name",
+    "PUT",
+    {
+      version: expectedVersion,
+      name: document.getElementById("unitRenameInput").value.trim(),
+    },
+    true,
+  );
 }
 function renderUnitsPanel() {
   const el = document.getElementById("unitsPanel");
@@ -2525,12 +2795,61 @@ function renderUnitsPanel() {
     el.replaceChildren();
     return;
   }
-  el.innerHTML = `<div class="section-heading"><div><span class="eyebrow">فهرست مشترک</span><h2>واحدهای درخواست‌کننده</h2><p>واحد جدید مستقل از درخواست‌ها ذخیره می‌شود.</p></div></div>
-  <div class="management-card"><form class="inline-form" onsubmit="event.preventDefault();addUnit()"><label for="newUnitName">نام واحد جدید</label><input id="newUnitName" type="text" maxlength="100" required><button class="btn-primary" type="submit">افزودن واحد</button></form>
-  <div class="unit-grid">${requesterUnits.map((u, i) => `<div class="unit-row"><span>${esc(u)}</span><button class="quiet-button" onclick="removeUnit(${i})">حذف</button></div>`).join("")}</div></div>`;
+  el.innerHTML = `<div class="section-heading"><div><span class="eyebrow">ساختار سازمانی</span><h2>واحدهای درخواست‌کننده</h2><p>واحدها می‌توانند مستقل یا زیرمجموعهٔ واحد دیگر باشند. مشاهدهٔ واحدی فقط برای حساب‌های دارای انتساب صریح فعال می‌شود؛ مدیریت درخت مجوز جداگانه دارد.</p></div></div>
+  <div class="management-card"><form class="unit-create-form" onsubmit="event.preventDefault();addUnit()">
+  <div class="form-group"><label for="newUnitName">نام واحد جدید</label><input id="newUnitName" type="text" maxlength="100" required></div>
+  <div class="form-group"><label for="newUnitParent">واحد بالادست</label><select id="newUnitParent">${unitParentOptions()}</select></div>
+  <button class="btn-primary" type="submit">افزودن واحد</button></form>
+  <ul class="unit-tree-list">${serverUnitRecords
+    .map((r) => {
+      const parent = serverUnitRecords.find((x) => x.id === r.parentId);
+      const hasChildren = serverUnitRecords.some((x) => x.parentId === r.id);
+      return `<li class="unit-row unit-tree-row" style="--unit-depth:${Math.min(r.depth, 10)}"><div class="unit-tree-info"><strong>${esc(r.name)}</strong><small>${parent ? "بالادست: " + esc(parent.name) : "سطح اول"}</small></div><div class="unit-tree-actions"><button class="quiet-button" onclick="openUnitRenameForm(${r.id})">تغییر نام</button><button class="quiet-button" onclick="openUnitParentForm(${r.id})">تغییر والد</button><button class="quiet-button" ${hasChildren ? 'disabled title="واحد دارای زیرواحد فعال است"' : ""} onclick="removeUnit(${requesterUnits.indexOf(r.name)})">حذف</button></div></li>`;
+    })
+    .join("")}</ul></div>`;
 }
 
 // ─── مدیریت حساب‌ها فقط برای مدیر سیستم ───
+function renderUnitOverview() {
+  const el = document.getElementById("unitOverviewPanel");
+  if (currentUser?.role !== "unit_manager") {
+    el.replaceChildren();
+    return;
+  }
+  const names = serverScopeUnits.map((u) => esc(u.name)).join("، ");
+  const stats = serverScopeReport;
+  const labels = {
+    scheduled: "زمان‌بندی‌شده",
+    enroute: "در حال اجرا",
+    delivered: "انجام‌شده",
+    cancelled: "لغوشده",
+  };
+  el.innerHTML =
+    `<div class="section-heading"><div><span class="eyebrow">مشاهدهٔ محدوده‌دار</span><h2>گزارش واحد</h2><p>واحدهای مجاز: ${names || "هیچ محدودهٔ فعالی تعیین نشده است."}</p><p>این مرحله فقط مشاهده است؛ ایجاد، تأیید، ویرایش و تخصیص مجاز نیست.</p></div></div>` +
+    (canAccess("reports.read") && stats
+      ? `<div class="management-card"><h3>آمار درخواست‌های محدوده — تمام تاریخ‌ها</h3><p>کل درخواست‌ها: <b>${faNum(stats.total)}</b></p><div class="unit-report-summary">${Object.entries(
+          labels,
+        )
+          .map(
+            ([key, title]) =>
+              `<div><span>${title}</span><strong>${faNum(stats.byStatus[key] || 0)}</strong></div>`,
+          )
+          .join(
+            "",
+          )}</div><div class="unit-report-scroll"><table class="req-table"><thead><tr><th>واحد</th><th>کل درخواست‌ها</th></tr></thead><tbody>${stats.byUnit.map((r) => `<tr><td>${esc(r.name)}</td><td>${faNum(r.total)}</td></tr>`).join("") || '<tr><td colspan="2">محدوده‌ای برای گزارش وجود ندارد.</td></tr>'}</tbody></table></div></div>`
+      : '<div class="management-card"><p>مجوز مشاهدهٔ گزارش برای این حساب فعال نیست.</p></div>');
+}
+function showUnitRequestDetails(id) {
+  if (currentUser?.role !== "unit_manager" || !requireAccess("requests.read"))
+    return;
+  const r =
+    samples.find((x) => x.id === id) || history.find((x) => x.id === id);
+  if (!r) return;
+  closeModal();
+  document.getElementById("modalRoot").innerHTML =
+    `<div class="modal-overlay"><section class="modal-box"><div class="modal-head"><h2 class="modal-title">جزئیات درخواست ${faNum(r.id)}</h2><button class="modal-close" aria-label="بستن" onclick="closeModal()">×</button></div><div class="modal-body settings-stack"><p>مبدأ: ${esc(r.origin)}</p><p>مقصد: ${esc(r.destination)}</p><p>واحد زمان ثبت: ${esc(r.unit || "—")}</p><p>تاریخ: ${esc(formatRouteDate(r.date))} — ساعت: ${esc(r.time)}</p><p>خودرو: ${esc(r.carName || "—")} — پلاک: ${esc(r.plate || "—")}</p><p>شناسهٔ ثبت‌کننده: ${faNum(r.requesterUserId)}</p></div></section></div>`;
+}
+
 function renderUsersPanel() {
   const el = document.getElementById("usersPanel");
   if (!canAccess("users.write")) {
@@ -2538,10 +2857,15 @@ function renderUsersPanel() {
     return;
   }
   el.innerHTML = `<div class="section-heading"><div><span class="eyebrow">مدیریت دسترسی کاربران</span><h2>کاربران سامانه</h2><p>نقش و تخصیص خودرو، بخش‌های قابل استفاده را مشخص می‌کند.</p></div><button class="btn-primary" onclick="openUserForm(null)">افزودن کاربر</button></div>
-  <div class="management-card user-grid">${appUsers.map((u) => `<article class="account-card"><div class="account-title"><h3>${esc(userDisplayName(u))}</h3><span class="badge ${u.active ? "badge-green" : "badge-red"}">${u.active ? "فعال" : "غیرفعال"}</span></div><p dir="ltr" class="username">${esc(u.username)}</p><p>${ROLE_LABELS[u.role] || "نقش نامعتبر"}</p>${u.role === "requester" ? `<p>واحد: ${esc(u.unit || "—")}</p>` : ""}${u.role === "driver" ? `<p>خودرو: ${esc((u.vehicleIds || []).map((id) => vehicles.find((v) => v.id === id)?.name || "حذف‌شده").join("، ") || "بدون تخصیص")}</p>` : ""}<button class="quiet-button" onclick="openUserForm(${u.id})">ویرایش و تغییر رمز</button></article>`).join("")}</div>`;
+  <div class="management-card user-grid">${appUsers.map((u) => `<article class="account-card"><div class="account-title"><h3>${esc(userDisplayName(u))}</h3><span class="badge ${u.active ? "badge-green" : "badge-red"}">${u.active ? "فعال" : "غیرفعال"}</span></div><p dir="ltr" class="username">${esc(u.username)}</p><p>${esc(u.roleTitle || ROLE_LABELS[u.role] || "نقش نامعتبر")}</p>${u.role === "requester" ? `<p>واحد: ${esc(u.unit || "—")}</p>` : ""}${u.role === "driver" ? `<p>خودرو: ${esc((u.vehicleIds || []).map((id) => vehicles.find((v) => v.id === id)?.name || "حذف‌شده").join("، ") || "بدون تخصیص")}</p>` : ""}<button class="quiet-button" ${!Object.hasOwn(ROLE_LABELS, u.role) ? 'disabled title="مدیریت این نقش در فرم قدیمی پشتیبانی نمی‌شود"' : ""} onclick="openUserForm(${u.id})">ویرایش و تغییر رمز</button></article>`).join("")}</div>`;
 }
 function openUserForm(id) {
   if (!requireAccess("users.write")) return;
+  const foundUser = appUsers.find((x) => x.id === id);
+  if (foundUser && !Object.hasOwn(ROLE_LABELS, foundUser.role)) {
+    showToast("warning", "مدیریت این نقش در فرم قدیمی پشتیبانی نمی‌شود.");
+    return;
+  }
   closeModal();
   const u = appUsers.find((x) => x.id === id) || {
     name: "",
@@ -2564,7 +2888,7 @@ function openUserForm(id) {
         `<option value="${value}" ${u.role === value ? "selected" : ""}>${label}</option>`,
     )
     .join("")}</select></div>
-  <div class="form-group"><label for="uf_password">${id ? "رمز جدید؛ خالی یعنی بدون تغییر" : "رمز عبور؛ حداقل ۱۲ نویسه"}</label><input id="uf_password" type="password" autocomplete="new-password" minlength="12" ${id ? "" : "required"}></div>
+  <div class="form-group"><label for="uf_password">${id ? "رمز جدید؛ خالی یعنی بدون تغییر" : "رمز عبور؛ حداقل ۸ نویسه، شامل حرف بزرگ و کوچک انگلیسی، رقم و علامت خاص"}</label><input id="uf_password" type="password" oninput="this.setCustomValidity('')" autocomplete="new-password" minlength="8" maxlength="128" ${id ? "" : "required"}></div>
   <div class="form-group full" id="uf_unitWrap"><label for="uf_unit">واحد درخواست‌کننده</label><select id="uf_unit">${requesterUnits.map((unit) => `<option value="${esc(unit)}" ${u.unit === unit ? "selected" : ""}>${esc(unit)}</option>`).join("")}</select></div>
   <fieldset class="form-group full" id="uf_vehicleWrap"><legend>خودروهای تخصیص‌یافته به راننده</legend><div class="assignment-grid">${vehicles.map((v) => `<label><input type="checkbox" name="uf_vehicle" value="${v.id}" ${u.vehicleIds?.includes(v.id) ? "checked" : ""}>${esc(v.name)}</label>`).join("")}</div></fieldset>
   <label class="checkbox-row full"><input id="uf_active" type="checkbox" ${u.active ? "checked" : ""}>حساب فعال باشد</label>
@@ -2573,10 +2897,20 @@ function openUserForm(id) {
 }
 function toggleUserFields() {
   const role = document.getElementById("uf_role").value;
-  document.getElementById("uf_unitWrap").hidden = role !== "requester";
+  document.getElementById("uf_unitWrap").hidden = !["requester", "unit_manager"].includes(role);
   document.getElementById("uf_vehicleWrap").hidden = role !== "driver";
 }
+function validatePasswordField(id, optional = false) {
+  const field = document.getElementById(id), value = field.value;
+  const valid = (optional && value === "") ||
+    (value.length >= 8 && value.length <= 128 && !/[\x00-\x1F\x7F]/.test(value) &&
+     /[A-Z]/.test(value) && /[a-z]/.test(value) && /[0-9]/.test(value) &&
+     /[\x21-\x2F\x3A-\x40\x5B-\x60\x7B-\x7E]/.test(value));
+  field.setCustomValidity(valid ? "" : "رمز باید ۸ تا ۱۲۸ نویسه و شامل حرف بزرگ و کوچک انگلیسی، رقم و علامت خاص باشد.");
+  return field.reportValidity();
+}
 async function saveUserForm(id) {
+  if (!validatePasswordField("uf_password", Boolean(id))) return;
   const role = document.getElementById("uf_role").value;
   const b = {
     name: document.getElementById("uf_name").value.trim(),
@@ -2585,7 +2919,7 @@ async function saveUserForm(id) {
     active: document.getElementById("uf_active").checked,
     password: document.getElementById("uf_password").value,
     unit:
-      role === "requester" ? document.getElementById("uf_unit").value : null,
+      ["requester", "unit_manager"].includes(role) ? document.getElementById("uf_unit").value : null,
     vehicleIds:
       role === "driver"
         ? [...document.querySelectorAll("[name=uf_vehicle]:checked")].map((x) =>
@@ -2634,10 +2968,26 @@ const SECTION_GUIDES = {
   ],
   missions: [
     "پنل راننده",
-    "درخواست‌های جاری، آینده و انجام‌شده را می‌توانید به صورت جداگانه مشاهده کنید. ابتدا «شروع مأموریت» و سپس «ثبت تحویل» را بزنید.",
+    "درخواست‌های جاری، آینده و انجام‌شده را می‌توانید به صورت جداگانه مشاهده کنید. ابتدا «شروع مأموریت» و سپس «پایان مأموریت» را بزنید.",
   ],
 };
 
+function sectionGuideInfo(tab) {
+  if (typeof serverWorkflowEnabled !== "undefined" && serverWorkflowEnabled && tab === "requests")
+    return ["مأموریت‌های ثبت‌شده", "درخواست جدید و تأییدهای آن را در بخش «گردش درخواست» انجام دهید. این بخش مأموریت‌های تخصیص‌یافته را در محدودهٔ مجاز شما نشان می‌دهد؛ عملیات اجرایی نیز به مجوز حساب شما وابسته است."];
+
+  if (currentUser?.role === "unit_manager" && tab === "requests")
+    return [
+      "مشاهدهٔ درخواست‌های محدوده",
+      "در این بخش فقط درخواست‌های واحدهای مجاز خود را مشاهده می‌کنید. در این مرحله ایجاد، تأیید، ویرایش، حذف یا تخصیص درخواست مجاز نیست.",
+    ];
+  if (currentUser?.role === "unit_manager" && tab === "history")
+    return [
+      "سوابق سفرهای محدوده",
+      "در این بخش سوابق درخواست‌های انجام‌شدهٔ واحدهای مجاز خود را می‌بینید؛ نه صرفاً درخواست‌های ثبت‌شده توسط خودتان.\nسوابق زیرواحدها فقط در صورت قرارگرفتن در محدودهٔ مجاز قابل مشاهده است.\nدر این بخش فقط می‌توانید سوابق را ببینید؛ امکان تغییر یا حذف آن‌ها وجود ندارد.",
+    ];
+  return SECTION_GUIDES[tab];
+}
 function guideDismissed(tab) {
   return (userPreferences(currentUser).dismissedGuides || []).includes(tab);
 }
@@ -2646,7 +2996,7 @@ function refreshGuides() {
   if (!currentUser) return;
   allowedTabs().forEach((tab) => {
     if (guideDismissed(tab)) return;
-    const info = SECTION_GUIDES[tab];
+    const info = sectionGuideInfo(tab);
     if (!info) return;
     const banner = document.createElement("aside");
     banner.className = "guide-banner";
@@ -2674,12 +3024,12 @@ function maybeShowGuide(tab) {
 }
 function showSectionGuide(tab = currentTab) {
   if (!currentUser || !allowedTabs().includes(tab)) return;
-  const info = SECTION_GUIDES[tab];
+  const info = sectionGuideInfo(tab);
   if (!info) return;
   window.Pickers?.closeAll();
   document.getElementById("guideRoot").dataset.guideTab = tab;
   document.getElementById("guideRoot").innerHTML =
-    `<div class="guide-overlay"><section class="guide-dialog" role="dialog" aria-modal="true" aria-labelledby="guideTitle"><button type="button" class="modal-close guide-close" aria-label="بستن راهنما" onclick="requestCloseGuide()">×</button><span class="eyebrow">راهنمای ${esc(ROLE_LABELS[currentUser.role])}</span><h2 id="guideTitle">${esc(info[0])}</h2><p>${esc(info[1])}</p><label class="checkbox-row"><input id="guideDontShow" type="checkbox">این راهنما دوباره نمایش داده نشود</label><div class="guide-foot"><button class="btn-primary" onclick="finishGuide('${tab}')">متوجه شدم</button></div></section></div>`;
+    `<div class="guide-overlay"><section class="guide-dialog" role="dialog" aria-modal="true" aria-labelledby="guideTitle"><button type="button" class="modal-close guide-close" aria-label="بستن راهنما" onclick="requestCloseGuide()">×</button><span class="eyebrow">راهنمای ${esc(currentUser.roleTitle || ROLE_LABELS[currentUser.role] || "کاربر")}</span><h2 id="guideTitle">${esc(info[0])}</h2><p>${esc(info[1])}</p><label class="checkbox-row"><input id="guideDontShow" type="checkbox">این راهنما دوباره نمایش داده نشود</label><div class="guide-foot"><button class="btn-primary" onclick="finishGuide('${tab}')">متوجه شدم</button></div></section></div>`;
   document.querySelector(".guide-foot button").focus();
 }
 function finishGuide(tab) {
@@ -2783,7 +3133,7 @@ function openPreferences() {
         `<button type="button" class="theme-choice" data-theme-choice="${value}" aria-pressed="${theme === value}" onclick="setTheme('${value}')"><span class="theme-preview theme-preview-${value}" aria-hidden="true"></span><strong>${label}</strong><span class="theme-selected" aria-hidden="true">✓</span></button>`,
     )
     .join("")}</div></section>
-  <section id="settingsPanel-password" class="settings-stack settings-panel" role="tabpanel" aria-labelledby="settingsTab-password" hidden><h3>تغییر رمز حساب</h3><form class="settings-stack" onsubmit="event.preventDefault();changeOwnPassword()"><label for="ownOldPassword">رمز فعلی</label><input type="password" id="ownOldPassword" autocomplete="current-password" required><label for="ownNewPassword">رمز جدید؛ حداقل ۱۲ نویسه</label><input type="password" id="ownNewPassword" autocomplete="new-password" minlength="12" required><button class="btn-primary" id="ownPasswordButton">ذخیرهٔ رمز</button></form></section>
+  <section id="settingsPanel-password" class="settings-stack settings-panel" role="tabpanel" aria-labelledby="settingsTab-password" hidden><h3>تغییر رمز حساب</h3><form class="settings-stack" onsubmit="event.preventDefault();changeOwnPassword()"><label for="ownOldPassword">رمز فعلی</label><input type="password" id="ownOldPassword" autocomplete="current-password" required><label for="ownNewPassword">رمز جدید؛ حداقل ۸ نویسه، شامل حرف بزرگ و کوچک انگلیسی، رقم و علامت خاص</label><input type="password" id="ownNewPassword" oninput="this.setCustomValidity('')" autocomplete="new-password" minlength="8" maxlength="128" required><button class="btn-primary" id="ownPasswordButton">ذخیرهٔ رمز</button></form></section>
   <section id="settingsPanel-guides" class="settings-stack settings-panel" role="tabpanel" aria-labelledby="settingsTab-guides" hidden><h3>نمایش راهنماها</h3><p class="settings-note">راهنمای هر بخش و راهنمای بستن پنجره را می‌توانید دوباره فعال کنید.</p><button type="button" class="btn-secondary" onclick="resetGuides()">بازنمایش همهٔ راهنماها</button><button type="button" class="btn-secondary" onclick="closeModal();showSectionGuide()">راهنمای بخش فعلی</button><button type="button" class="btn-secondary" onclick="restoreModalCloseHelp()">بازنمایش راهنمای بستن پنجره</button></section>
   </div></section></div>`;
 }
@@ -2801,6 +3151,7 @@ function selectSettingsTab(id, focus = false) {
 }
 
 async function changeOwnPassword() {
+  if (!validatePasswordField("ownNewPassword")) return;
   await serverWrite(
     "password",
     "POST",
@@ -2872,7 +3223,7 @@ function renderMissions() {
               !enroute &&
               getSampleStatus(s.date, s.time) === "overdue";
             const label = delivered
-              ? "تحویل‌شده"
+              ? "انجام‌شده"
               : reserved
                 ? "رزرو"
                 : enroute
@@ -2882,8 +3233,8 @@ function renderMissions() {
                     : "در انتظار حرکت";
             return `<article class="mission-card"><div class="mission-top"><span class="badge ${delivered ? "badge-green" : enroute ? "badge-blue" : delayed ? "badge-red" : "badge-amber"}">${label}</span><span class="mission-number">درخواست ${faNum(s.id)}</span></div>
     <div class="mission-route"><div><span>مبدأ</span><strong>${esc(s.origin)}</strong></div><div><span>مقصد</span><strong>${esc(s.destination)}</strong></div></div>
-    <div class="mission-details"><span>تاریخ <b>${esc(formatRouteDate(s.date))}</b></span><span>ساعت <b dir="ltr">${esc(s.time.replace(/\d/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[Number(d)]))}</b></span><span>خودرو <b>${esc(car?.name || "حذف‌شده")}</b></span><span>واحد <b>${esc(s.unit || "—")}</b></span></div>
-    ${!delivered && !reserved ? `<div class="mission-actions">${enroute ? `<button class="btn-primary" onclick="confirmMissionDelivery(${s.id})">ثبت تحویل</button>` : `<button class="btn-primary" onclick="startMission(${s.id})">شروع مأموریت</button>`}<button class="btn-secondary" onclick="showMissionDetails(${s.id})">جزئیات</button></div>` : `<button class="quiet-button" onclick="showMissionDetails(${s.id})">جزئیات درخواست</button>`}</article>`;
+    <div class="mission-details"><span>تاریخ <b>${esc(formatRouteDate(s.date))}</b></span><span>ساعت <b><bdi dir="ltr">${esc(s.time.replace(/\d/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[Number(d)]))}</bdi></b></span><span>خودرو <b>${esc(car?.name || "حذف‌شده")}</b></span><span>واحد <b>${esc(s.unit || "—")}</b></span></div>
+    ${!delivered && !reserved ? `<div class="mission-actions">${enroute ? `<button class="btn-primary" onclick="confirmMissionDelivery(${s.id})">پایان مأموریت</button>` : `<button class="btn-primary" onclick="startMission(${s.id})">شروع مأموریت</button>`}<button class="btn-secondary" onclick="showMissionDetails(${s.id})">جزئیات</button></div>` : `<button class="quiet-button" onclick="showMissionDetails(${s.id})">جزئیات درخواست</button>`}</article>`;
           })
           .join("")
       : `<div class="driver-empty"><h2>درخواستی در این بخش ندارید</h2><p>درخواست‌های روزهای بعد را در «درخواست‌های آینده» ببینید.</p></div>`
@@ -2895,21 +3246,20 @@ function showMissionDetails(id) {
     return;
   closeModal();
   document.getElementById("modalRoot").innerHTML =
-    `<div class="modal-overlay"><section class="modal-box"><div class="modal-head"><h2 class="modal-title">جزئیات درخواست ${faNum(id)}</h2><button class="modal-close" aria-label="بستن" onclick="closeModal()">×</button></div><div class="modal-body settings-stack"><p>مبدأ: <b>${esc(sample.origin)}</b></p><p>مقصد: <b>${esc(sample.destination)}</b></p><p>تاریخ: ${esc(formatRouteDate(sample.date))} · ساعت: ${esc(sample.time)}</p><p>واحد: <b>${esc(sample.unit)}</b></p><p>پلاک خودرو: <b dir="ltr" class="plate-value">${esc(vehicles.find((vehicle) => vehicle.id === sample.carId)?.plate || "—")}</b></p></div></section></div>`;
+    `<div class="modal-overlay"><section class="modal-box"><div class="modal-head"><h2 class="modal-title">جزئیات درخواست ${faNum(id)}</h2><button class="modal-close" aria-label="بستن" onclick="closeModal()">×</button></div><div class="modal-body settings-stack"><p>مبدأ: <b>${esc(sample.origin)}</b></p><p>مقصد: <b>${esc(sample.destination)}</b></p><p>تاریخ: ${esc(formatRouteDate(sample.date))} · ساعت: ${esc(String(sample.time).replace(/\d/g,d=>"۰۱۲۳۴۵۶۷۸۹"[Number(d)]))}</p><p>واحد: <b>${esc(sample.unit)}</b></p><p>پلاک خودرو: <b dir="ltr" class="plate-value">${esc(vehicles.find((vehicle) => vehicle.id === sample.carId)?.plate || "—")}</b></p></div></section></div>`;
 }
 function confirmMissionDelivery(id) {
   const sample = samples.find((s) => s.id === id);
   if (!sample || !canDeliverSample(sample)) {
-    showToast("error", "این مأموریت قابل تحویل نیست.");
+    showToast("error", "پایان این مأموریت قابل ثبت نیست.");
     return;
   }
   openLocalConfirm(
-    "تأیید تحویل",
-    `تحویل مأموریت «${sample.origin} ← ${sample.destination}» ثبت شود؟`,
+    "تأیید پایان مأموریت",
+    `پایان مأموریت «${sample.origin} ← ${sample.destination}» ثبت شود؟`,
     () => {
       deliverSample(id);
       closeModal();
-      showToast("success", "تحویل ثبت شد.");
     },
   );
 }
@@ -3143,6 +3493,10 @@ document.addEventListener(
   "keydown",
   (event) => {
     const dialog = topDialog();
+    // Let the browser handle arrows, Tab and Escape in an open real select.
+    // In particular Escape must close the picker, not discard its parent form.
+    if (typeof CSS !== "undefined" && CSS.supports("appearance", "base-select") &&
+        document.querySelector("select:open")) return;
     if (event.key === "Escape") {
       hideAppTooltip();
       if (!dialog) return;
@@ -3319,6 +3673,10 @@ enhancePasswordInputs();
 enhanceTooltips();
 
 // این متغیرها فقط در حافظهٔ صفحه‌اند؛ دادهٔ عملیاتی در localStorage ذخیره نمی‌شود.
+let serverWorkflowVersion = 0;
+let serverWorkflowEnabled = false;
+let serverScopeReport = null;
+let serverScopeUnits = [];
 let serverDashboard = {
   topVehicles: [],
   topUnits: [],
@@ -3329,6 +3687,7 @@ let serverDashboard = {
 let serverCsrf = "";
 let serverRevision = -1;
 let serverUnitRecords = [];
+let serverVehicleTypes = [];
 let serverCapacityUsage = [];
 let serverHistoryCursor = null;
 let serverBusy = false;
@@ -3369,28 +3728,115 @@ async function apiRequest(path, method = "GET", data, operationKey) {
   return result;
 }
 function lockServerView() {
+  serverWorkflowVersion = 0;
+  serverWorkflowEnabled = false;
+  if (typeof clearWorkflowView === 'function') clearWorkflowView();
+  document.getElementById("deletedVehiclesButton")?.remove();
   closeModal();
   closeGuide();
   currentUser = null;
   sessionExpiresAt = 0;
   serverCsrf = "";
   serverRevision = -1;
+  serverScopeReport = null;
+  serverScopeUnits = [];
+  serverDashboard = {
+    topVehicles: [],
+    topUnits: [],
+    topCenters: [],
+    days: [],
+    recentTotal: 0,
+  };
+  document.getElementById("unitInput").value = "";
+  serverVehicleTypes = [];
+  for (const code of Object.keys(BODY_TYPE_LABELS))
+    delete BODY_TYPE_LABELS[code];
   vehicles = [];
   samples = [];
   history = [];
   centers = [];
   requesterUnits = [];
+  serverUnitRecords = [];
+  serverCapacityUsage = [];
+  serverHistoryCursor = null;
+  usedRequesterUnits = [];
   appUsers = [];
   render();
   document.getElementById("loginPassword").value = "";
 }
 async function refreshServerState() {
-  const d = await apiRequest("state?revision=" + serverRevision);
+  let d;
+  try {
+    d = await apiRequest("state?revision=" + serverRevision);
+  } catch (error) {
+    if (currentUser?.role === "unit_manager") lockServerView();
+    throw error;
+  }
+  if (currentUser?.role === "unit_manager" && d.unchanged) {
+    lockServerView();
+    throw new Error(
+      "بک‌اند مشاهدهٔ واحدی باید مجوزها را دوباره بررسی کند؛ ورود مجدد لازم است.",
+    );
+  }
+  if (
+    d.currentUser?.role === "unit_manager" &&
+    (d.scopedReadVersion !== 1 ||
+      d.currentUser.access?.enforced !== true ||
+      !Array.isArray(d.currentUser.access.permissions) ||
+      !Array.isArray(d.currentUser.access.unitIds))
+  ) {
+    lockServerView();
+    throw new Error("نسخهٔ بک‌اند و رابطِ مشاهدهٔ واحدی هماهنگ نیست.");
+  }
+  if (
+    d.currentUser &&
+    (currentUser?.id !== d.currentUser.id ||
+      JSON.stringify(currentUser?.access) !==
+        JSON.stringify(d.currentUser.access))
+  ) {
+    closeModal();
+    closeGuide();
+  }
+  serverWorkflowVersion = d.workflowVersion === 1 ? 1 : 0;
+  serverWorkflowEnabled = d.workflowEnabled === true;
   serverCsrf = d.csrfToken;
   sessionExpiresAt = d.sessionExpiresAt;
   if (d.unchanged) return false;
+  if (!Array.isArray(d.vehicleTypes)) {
+    throw new Error(
+      "بک‌اند و رابط هم‌نسخه نیستند؛ اطلاعات انواع خودرو دریافت نشد.",
+    );
+  }
+  if (
+    !Array.isArray(d.unitRecords) ||
+    d.unitRecords.some(
+      (r) =>
+        !Number.isSafeInteger(r.id) ||
+        !Number.isSafeInteger(r.version) ||
+        !Array.isArray(r.ancestorIds) ||
+        !Number.isInteger(r.depth) ||
+        typeof r.path !== "string",
+    )
+  ) {
+    throw new Error(
+      "بک‌اند و رابط واحدهای درختی هم‌نسخه نیستند؛ فایل‌ها را بررسی کنید.",
+    );
+  }
+  serverVehicleTypes = d.vehicleTypes;
+  for (const code of Object.keys(BODY_TYPE_LABELS))
+    delete BODY_TYPE_LABELS[code];
+  for (const type of serverVehicleTypes)
+    BODY_TYPE_LABELS[type.code] = type.title;
   serverRevision = d.revision;
-  serverDashboard = d.dashboard || serverDashboard;
+  serverDashboard = d.dashboard || {
+    topVehicles: [],
+    topUnits: [],
+    topCenters: [],
+    days: [],
+    recentTotal: 0,
+  };
+  serverScopeReport = d.scopeReport || null;
+  serverScopeUnits = d.scopeUnits || [];
   vehicles = d.vehicles;
   samples = d.samples;
   history = d.history;
@@ -3454,7 +3900,23 @@ function queueServerPreferences(value) {
 async function loadMoreServerHistory() {
   if (!serverHistoryCursor) return;
   try {
+    const scopeUserId =
+      currentUser?.role === "unit_manager" ? currentUser.id : null;
     const d = await apiRequest("history?before=" + serverHistoryCursor);
+    if (scopeUserId !== null) {
+      const sameScope =
+        currentUser?.id === scopeUserId &&
+        currentUser.role === "unit_manager" &&
+        JSON.stringify(d.access?.permissions) ===
+          JSON.stringify(currentUser.access?.permissions) &&
+        JSON.stringify(d.access?.unitIds) ===
+          JSON.stringify(currentUser.access?.unitIds);
+      if (!sameScope) {
+        await refreshServerState();
+        render();
+        return;
+      }
+    }
     const ids = new Set(history.map((x) => x.id));
     history.push(...d.items.filter((x) => !ids.has(x.id)));
     const sampleIds = new Set(samples.map((x) => x.id));
@@ -3463,6 +3925,7 @@ async function loadMoreServerHistory() {
     renderHistory();
     if (currentUser?.role === "driver") renderMissions();
   } catch (e) {
+    if (currentUser?.role === "unit_manager") lockServerView();
     showToast("error", e.message);
   }
 }
@@ -3488,8 +3951,9 @@ setInterval(async () => {
     !currentUser ||
     document.hidden ||
     serverBusy ||
-    document.querySelector(".modal-overlay,.guide-overlay") ||
-    document.activeElement?.matches("input,select,textarea")
+    (currentUser.role !== "unit_manager" &&
+      (document.querySelector(".modal-overlay,.guide-overlay") ||
+        document.activeElement?.matches("input,select,textarea")))
   )
     return;
   try {
